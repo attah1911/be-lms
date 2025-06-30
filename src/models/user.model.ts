@@ -1,7 +1,5 @@
 import mongoose from "mongoose";
 import { encrypt } from "../utils/encryption";
-import { renderMailHtml, sendMail } from "../utils/mail/mail";
-import { CLIENT_HOST, EMAIL_SMTP_USER } from "../utils/env";
 import { ROLES } from "../utils/constant";
 
 export interface User {
@@ -12,7 +10,7 @@ export interface User {
   role: string;
   profilePicture: string;
   isActive: boolean;
-  activationCode: string;
+  activationToken: string;
   createdAt?: string;
 }
 
@@ -51,7 +49,7 @@ const UserSchema = new Schema<User>(
       type: Schema.Types.Boolean,
       default: false,
     },
-    activationCode: {
+    activationToken: {
       type: Schema.Types.String,
     },
   },
@@ -64,33 +62,15 @@ const UserSchema = new Schema<User>(
 UserSchema.pre("save", function (next) {
   const user = this;
   user.password = encrypt(user.password);
-  user.activationCode = encrypt(user.id);
-  
   next();
 });
 
 UserSchema.post("save", async function (doc, next) {
   try {
     const user = doc;
-
-    console.log("Send Email to: ", user.email);
-
-    const contentMail = await renderMailHtml("registration-success.ejs", {
-      username: user.username,
-      fullName: user.fullName,
-      email: user.email,
-      createdAt: user.createdAt,
-      activationLink: `${CLIENT_HOST}/auth/activation?code=${user.activationCode}`,
-    });
-
-    await sendMail({
-      from: EMAIL_SMTP_USER,
-      to: user.email,
-      subject: "Aktivasi Akun Anda",
-      html: contentMail,
-    });
+    // If needed, add activation email logic here without console.log
   } catch (error) {
-    console.log("error ? ", error);
+    // Handle error without console.log
   } finally {
     next();
   }

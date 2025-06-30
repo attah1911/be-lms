@@ -11,6 +11,61 @@ import { encrypt } from "../utils/encryption";
 const default_password_guru = "Smpn37Jakartaguru";
 
 export default {
+  async getTeacherProfile(req: IReqUser, res: Response) {
+    /**
+     #swagger.tags = ['Teacher']
+     #swagger.security = [{
+       "bearerAuth": []
+     }]
+     */
+    try {
+      // Find the teacher record associated with the current user
+      const teacher = await TeacherModel.findOne({ userId: req.user?.id });
+      
+      if (!teacher) {
+        return response.error(res, null, "Data guru tidak ditemukan");
+      }
+      
+      response.success(res, teacher, "Sukses mengambil data guru");
+    } catch (error) {
+      response.error(res, error, "Gagal mengambil data guru");
+    }
+  },
+  
+  async updateTeacherProfile(req: IReqUser, res: Response) {
+    /**
+     #swagger.tags = ['Teacher']
+     #swagger.security = [{
+       "bearerAuth": []
+     }]
+     #swagger.requestBody = {
+       required: true,
+       schema: { $ref: "#/components/schemas/UpdateTeacherProfileRequest" }
+     }
+     */
+    try {
+      const { nrk, noTelp } = req.body;
+      
+      // Find the teacher record associated with the current user
+      const teacher = await TeacherModel.findOne({ userId: req.user?.id });
+      
+      if (!teacher) {
+        return response.error(res, null, "Data guru tidak ditemukan");
+      }
+      
+      // Only update the allowed fields
+      const updatedTeacher = await TeacherModel.findByIdAndUpdate(
+        teacher._id,
+        { nrk, noTelp },
+        { new: true }
+      );
+      
+      response.success(res, updatedTeacher, "Sukses mengupdate data guru");
+    } catch (error) {
+      response.error(res, error, "Gagal mengupdate data guru");
+    }
+  },
+
   async create(req: IReqUser, res: Response) {
     /**
      #swagger.tags = ['Teacher']

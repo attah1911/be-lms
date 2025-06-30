@@ -18,7 +18,12 @@ export default {
     });
   },
 
-  error(res: Response, error: unknown, message: string): Response {
+  error(
+    res: Response, 
+    error: unknown, 
+    message: string, 
+    statusCode: number = 500
+  ): Response {
     // Handle Yup validation errors
     if (error instanceof Yup.ValidationError) {
       return res.status(400).json({
@@ -32,9 +37,9 @@ export default {
 
     // Handle other types of errors
     console.error('Error details:', error);
-    return res.status(500).json({
+    return res.status(statusCode).json({
       meta: {
-        status: 500,
+        status: statusCode,
         message: message || 'Internal server error',
       },
       data: null,

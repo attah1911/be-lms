@@ -1,49 +1,115 @@
 import nodemailer from "nodemailer";
 import ejs from "ejs";
 import path from "path";
+import crypto from 'crypto';
+import environment from "../../config/environment";
 
-import {
-  EMAIL_SMTP_SERVICE_NAME,
-  EMAIL_SMTP_HOST,
-  EMAIL_SMTP_PASS,
-  EMAIL_SMTP_PORT,
-  EMAIL_SMTP_SECURE,
-  EMAIL_SMTP_USER,
-} from "../env";
-
+// Create a single transporter instance
 const transporter = nodemailer.createTransport({
-  service: EMAIL_SMTP_SERVICE_NAME,
-  host: EMAIL_SMTP_HOST,
-  port: EMAIL_SMTP_PORT,
-  secure: EMAIL_SMTP_SECURE,
+  service: environment.SMTP_SERVICE,
+  host: environment.SMTP_HOST,
+  port: environment.SMTP_PORT,
+  secure: environment.SMTP_SECURE,
   auth: {
-    user: EMAIL_SMTP_USER,
-    pass: EMAIL_SMTP_PASS,
+    user: environment.SMTP_USER,
+    pass: environment.SMTP_PASS,
   },
-  requireTLS: true,
+  tls: {
+    rejectUnauthorized: false // Allow self-signed certificates
+  },
+  pool: true, // Use pooled connections
+  maxConnections: 5, // Limit concurrent connections
+  rateDelta: 1000, // Minimum time between messages in ms
+  rateLimit: 5, // Maximum number of messages per rateDelta
 });
 
-export interface ISendMail {
-  from: string;
-  to: string;
-  subject: string;
-  html: string;
-}
-
-export const sendMail = async ({ ...mailParams }: ISendMail) => {
-  const result = await transporter.sendMail({
-    ...mailParams,
-  });
-  return result;
+/**
+ * Generate a random activation token
+ * @returns {string} Random hex string token
+ */
+export const generateActivationToken = (): string => {
+  return crypto.randomBytes(32).toString('hex');
 };
 
-export const renderMailHtml = async (
+const renderMailHtml = async (
   template: string,
-  data: any
+  data: Record<string, any>
 ): Promise<string> => {
-  const content = await ejs.renderFile(
-    path.join(__dirname, `templates/${template}`),
-    data
-  );
-  return content as string;
+  try {
+    const templatePath = path.join(__dirname, `templates/${template}`);
+    const content = await ejs.renderFile(templatePath, data);
+    
+    // Ensure content is a string
+    if (typeof content !== 'string') {
+      throw new Error('Template rendering did not return a string');
+    }
+    
+    return content;
+  } catch (error) {
+    console.error('Error rendering email template:', error);
+    throw new Error(`Failed to render email template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 };
+
+// Send activation email
+export const sendActivationEmail = async (
+  email: string, 
+  username: string,
+  fullName: string,
+  activationToken: string
+): Promise<void> => {
+  try {
+    // Generate activation link with token parameter
+    const activationLink = `${environment.FRONTEND_URL}/auth/activation?token=${activationToken}`;
+
+    // Get current date formatted in Indonesian
+    const createdAt = new Date().toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Render email template
+    const html = await renderMailHtml('registration-success.ejs', {
+      username,
+      fullName,
+      email,
+      createdAt,
+      activationLink
+    });
+
+    // Generate unique message ID
+    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2)}@e-learning-smpn37>`;
+
+    // Send mail directly using transporter
+    await transporter.sendMail({
+      from: `"E-Learning SMPN 37" <${environment.SMTP_USER}>`,
+      to: email,
+      subject: "Aktivasi Akun E-Learning SMPN 37",
+      html,
+      messageId,
+      headers: {
+        'Message-ID': messageId,
+        'X-Priority': '1',
+        'X-MSMail-Priority': 'High',
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error sending activation email:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      command: error.command
+    });
+    throw new Error('Gagal mengirim email aktivasi');
+  }
+};
+
+// Verify transporter connection
+transporter.verify((error) => {
+  if (error) {
+    console.error('SMTP Connection Error:', error);
+  }
+});

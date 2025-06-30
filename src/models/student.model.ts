@@ -16,6 +16,7 @@ export interface Student {
   kelas: string;
   noTelp: string;
   userId: mongoose.Types.ObjectId;
+  completedAssignments?: string[]; // Array of assignment IDs marked as completed
 }
 
 const StudentSchema = new Schema<Student>(
@@ -46,6 +47,10 @@ const StudentSchema = new Schema<Student>(
       ref: 'User',
       required: true,
       unique: true,
+    },
+    completedAssignments: {
+      type: [String],
+      default: [],
     },
   },
   {

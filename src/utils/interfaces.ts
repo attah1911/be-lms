@@ -7,7 +7,7 @@ export interface IUserToken
   extends Omit<
     User,
     | "password"
-    | "activationCode"
+    | "activationToken"
     | "isActive"
     | "email"
     | "fullName"

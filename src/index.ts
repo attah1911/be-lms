@@ -4,11 +4,13 @@ import cors from "cors";
 import router from "./routes/api";
 import db from "./utils/database";
 import docs from "./docs/route";
+import { initScheduler } from "./utils/scheduler";
+import { logger } from "./utils/logger";
 
 async function init() {
   try {
     const result = await db();
-    console.log("Database status: ", result);
+    logger.info("Database status: ", result);
 
     const app = express();
 
@@ -28,10 +30,13 @@ async function init() {
     docs(app);
 
     app.listen(PORT, () => {
-      console.log(`Server running on port http://localhost:${PORT}`);
+      logger.info(`Server running on port http://localhost:${PORT}`);
+      
+      // Initialize scheduler after server has started
+      initScheduler();
     });
   } catch (error) {
-    console.log(error);
+    logger.error("Error initializing server:", error);
   }
 }
 
