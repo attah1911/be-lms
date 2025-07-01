@@ -20,6 +20,8 @@ async function init() {
       origin: [
         // Use environment.FRONTEND_URL if defined, otherwise fallback to localhost
         environment.FRONTEND_URL || 'http://localhost:3001',
+        // Add Vercel deployment URL
+        'https://front-end-e-learning.vercel.app',
         // For development, you might want to allow localhost
         'http://localhost:3001'
       ],
@@ -27,6 +29,9 @@ async function init() {
       allowedHeaders: ['Content-Type', 'Authorization'],
       credentials: true
     }));
+    
+    // Handle OPTIONS preflight requests
+    app.options('*', cors());
     
     app.use(bodyParser.json());
 
