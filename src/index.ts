@@ -6,6 +6,7 @@ import db from "./utils/database";
 import docs from "./docs/route";
 import { initScheduler } from "./utils/scheduler";
 import { logger } from "./utils/logger";
+import environment from "./config/environment";
 
 async function init() {
   try {
@@ -14,10 +15,22 @@ async function init() {
 
     const app = express();
 
-    app.use(cors());
+    // Configure CORS with proper settings
+    app.use(cors({
+      origin: [
+        // Use environment.FRONTEND_URL if defined, otherwise fallback to localhost
+        environment.FRONTEND_URL || 'http://localhost:3001',
+        // For development, you might want to allow localhost
+        'http://localhost:3001'
+      ],
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true
+    }));
+    
     app.use(bodyParser.json());
 
-    const PORT = 3000;
+    const PORT = environment.PORT || 3000;
 
     app.get("/", (req, res) => {
       res.status(200).json({
@@ -30,7 +43,7 @@ async function init() {
     docs(app);
 
     app.listen(PORT, () => {
-      logger.info(`Server running on port http://localhost:${PORT}`);
+      logger.info(`Server running on port ${PORT}`);
       
       // Initialize scheduler after server has started
       initScheduler();
