@@ -104,11 +104,11 @@ router.post("/mata-pelajaran/:mataPelajaranId/materi", authMiddleware, aclMiddle
 // Add new route for getting materials for a specific mata pelajaran 
 router.get("/mata-pelajaran/:mataPelajaranId/materi", authMiddleware, materiPelajaranController.findAll);
 // Add new route for getting a single material by ID
-router.get("/materi-pelajaran/:materiPelajaranId/materi/:id", authMiddleware, materiPelajaranController.findOne);
+router.get("/mata-pelajaran/:mataPelajaranId/materi/:id", authMiddleware, materiPelajaranController.findOne);
 // Add new route for updating a material
-router.put("/materi-pelajaran/:materiPelajaranId/materi/:id", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), materiPelajaranController.update);
+router.put("/mata-pelajaran/:mataPelajaranId/materi/:id", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), materiPelajaranController.update);
 // Add new route for deleting a material
-router.delete("/materi-pelajaran/:materiPelajaranId/materi/:id", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), materiPelajaranController.remove);
+router.delete("/mata-pelajaran/:mataPelajaranId/materi/:id", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), materiPelajaranController.remove);
 
 // Assignment routes
 router.post("/assignments", authMiddleware, aclMiddleware([ROLES.GURU, ROLES.ADMIN]), assignmentController.create);

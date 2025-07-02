@@ -25,7 +25,7 @@ async function init() {
         // For development, you might want to allow localhost
         'http://localhost:3001'
       ],
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       credentials: true
     }));
