@@ -1,5 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
-// testt
+// test
 
 import {
   CLOUDINARY_CLOUD_NAME,
