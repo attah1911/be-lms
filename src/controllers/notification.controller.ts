@@ -21,19 +21,17 @@ export default {
         return response.error(res, null, 'Hanya murid yang dapat mengakses endpoint ini');
       }
 
-      // Find the student data for the logged-in user
       const student = await StudentModel.findOne({ userId: req.user.id });
       if (!student) {
         return response.error(res, null, 'Data murid tidak ditemukan');
       }
       
-      // Get all notifications for this student
       const notifications = await NotificationModel.find({ 
         'recipient.type': 'student',
         'recipient.id': student._id 
       })
         .populate('mataPelajaran', 'judul')
-        .sort({ createdAt: -1 }); // Sort by newest first
+        .sort({ createdAt: -1 });
 
       response.success(res, notifications, 'Sukses mengambil data notifikasi');
     } catch (error) {
@@ -54,7 +52,6 @@ export default {
         return response.error(res, null, 'Hanya guru yang dapat mengakses endpoint ini');
       }
 
-      // Find the teacher data for the logged-in user
       const teacher = await TeacherModel.findOne({ userId: req.user.id });
       if (!teacher) {
         return response.error(res, null, 'Data guru tidak ditemukan');
@@ -65,7 +62,6 @@ export default {
       const limitNumber = parseInt(limit as string, 10);
       const skip = (pageNumber - 1) * limitNumber;
 
-      // Build query
       const query: any = { 
         'recipient.type': 'teacher',
         'recipient.id': teacher._id 
@@ -75,13 +71,10 @@ export default {
         query.isRead = false;
       }
 
-      // Count total documents
       const total = await NotificationModel.countDocuments(query);
 
-      // Get notifications with pagination - Fix the populate method
       const notifications = await NotificationModel.find(query)
         .populate('mataPelajaran', 'judul')
-        // Don't try to populate relatedItem directly since it uses refPath
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNumber);
@@ -117,13 +110,11 @@ export default {
         return response.error(res, null, 'Hanya guru yang dapat mengakses endpoint ini');
       }
 
-      // Find the teacher data for the logged-in user
       const teacher = await TeacherModel.findOne({ userId: req.user.id });
       if (!teacher) {
         return response.error(res, null, 'Data guru tidak ditemukan');
       }
 
-      // Get all notifications for this teacher without pagination
       const allNotifications = await NotificationModel.find({ 
         'recipient.type': 'teacher',
         'recipient.id': teacher._id 
@@ -131,7 +122,6 @@ export default {
       .populate('mataPelajaran', 'judul')
       .sort({ createdAt: -1 });
 
-      // Get unread notifications
       const unreadNotifications = await NotificationModel.find({ 
         'recipient.type': 'teacher',
         'recipient.id': teacher._id,
@@ -140,19 +130,16 @@ export default {
       .populate('mataPelajaran', 'judul')
       .sort({ createdAt: -1 });
 
-      // Count unread notifications
       const unreadCount = await NotificationModel.countDocuments({
         'recipient.type': 'teacher',
         'recipient.id': teacher._id,
         isRead: false
       });
 
-      // Get information about all notifications in the system
       const totalNotifications = await NotificationModel.countDocuments({});
       const teacherNotifications = await NotificationModel.countDocuments({ 'recipient.type': 'teacher' });
       const studentNotifications = await NotificationModel.countDocuments({ 'recipient.type': 'student' });
       
-      // Get notification types breakdown
       const notificationTypes = await NotificationModel.aggregate([
         { $match: { 'recipient.type': 'teacher', 'recipient.id': teacher._id } },
         { $group: { _id: '$type', count: { $sum: 1 } } }
@@ -219,7 +206,6 @@ export default {
         return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
       }
 
-      // Count unread notifications
       const unreadCount = await NotificationModel.countDocuments({
         'recipient.type': recipientType,
         'recipient.id': recipientId,
@@ -271,7 +257,6 @@ export default {
         return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
       }
 
-      // Find the notification and ensure it belongs to this user
       const notification = await NotificationModel.findOne({
         _id: id,
         'recipient.type': recipientType,
@@ -282,7 +267,6 @@ export default {
         return response.error(res, null, 'Notifikasi tidak ditemukan');
       }
 
-      // Mark as read
       notification.isRead = true;
       await notification.save();
 
@@ -326,7 +310,6 @@ export default {
         return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
       }
 
-      // Update all unread notifications for this user
       const result = await NotificationModel.updateMany(
         { 
           'recipient.type': recipientType,
@@ -361,12 +344,10 @@ export default {
 
       const { type, title, description, mataPelajaran, recipientType, recipientId, relatedItem } = req.body;
 
-      // Validate required fields
       if (!type || !title || !description || !mataPelajaran || !recipientType || !recipientId) {
         return response.error(res, null, 'Semua field wajib harus diisi');
       }
 
-      // Create new notification
       const notification = new NotificationModel({
         type,
         title,
@@ -450,14 +431,12 @@ export default {
         return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
       }
 
-      // Find a mata pelajaran to associate with the notification
       const mataPelajaran = await mongoose.model('MataPelajaran').findOne();
       if (!mataPelajaran) {
         return response.error(res, null, 'Tidak ada mata pelajaran yang tersedia');
       }
       mataPelajaranId = mataPelajaran._id;
 
-      // Create a test notification
       const notification = new NotificationModel({
         type: req.user.role === ROLES.GURU ? 'submission' : 'tugas',
         title: 'Notifikasi Test',
@@ -467,7 +446,7 @@ export default {
           type: recipientType,
           id: recipientId
         },
-        relatedItem: mataPelajaranId, // Just use mata pelajaran ID as related item for testing
+        relatedItem: mataPelajaranId,
         isRead: false
       });
 

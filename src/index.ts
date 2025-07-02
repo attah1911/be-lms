@@ -15,14 +15,10 @@ async function init() {
 
     const app = express();
 
-    // Configure CORS with proper settings
     app.use(cors({
       origin: [
-        // Use environment.FRONTEND_URL if defined, otherwise fallback to localhost
         environment.FRONTEND_URL || 'http://localhost:3001',
-        // Add Vercel deployment URL
         'https://front-end-e-learning.vercel.app',
-        // For development, you might want to allow localhost
         'http://localhost:3001'
       ],
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -30,7 +26,6 @@ async function init() {
       credentials: true
     }));
     
-    // Handle OPTIONS preflight requests
     app.options('*', cors());
     
     app.use(bodyParser.json());
@@ -50,7 +45,6 @@ async function init() {
     app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
       
-      // Initialize scheduler after server has started
       initScheduler();
     });
   } catch (error) {

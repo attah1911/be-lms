@@ -11,7 +11,6 @@ import EnrollmentModel from "../models/enrollment.model";
 import MataPelajaranModel from "../models/mataPelajaran.model";
 import AssignmentModel from "../models/assignment.model";
 
-// Add a new interface at the top for completion toggling
 interface ICompletionToggle {
   isCompleted: boolean;
 }
@@ -29,13 +28,11 @@ export default {
     try {
       const { id } = req.params;
 
-      // Check if student exists
       const student = await StudentModel.findById(id);
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
       }
 
-      // If the request is from a student, ensure they can only access their own data
       if (req.user?.role === ROLES.MURID) {
         const requestingStudent = await StudentModel.findOne({ userId: req.user.id });
         if (!requestingStudent || requestingStudent._id.toString() !== id) {
@@ -43,7 +40,6 @@ export default {
         }
       }
 
-      // Get all enrollments for this student
       const enrollments = await EnrollmentModel.find({ student: id })
         .populate({
           path: 'mataPelajaran',
@@ -53,7 +49,6 @@ export default {
           }
         });
 
-      // Extract mata pelajaran data from enrollments
       const mataPelajaranList = enrollments.map(enrollment => enrollment.mataPelajaran);
 
       response.success(res, mataPelajaranList, "Sukses mengambil data mata pelajaran yang diikuti");
@@ -75,13 +70,11 @@ export default {
         return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
       }
 
-      // Find the student data for the logged-in user
       const student = await StudentModel.findOne({ userId: req.user.id });
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
       }
 
-      // Get all enrollments for this student
       const enrollments = await EnrollmentModel.find({ student: student._id })
         .populate({
           path: 'mataPelajaran',
@@ -91,7 +84,6 @@ export default {
           }
         });
 
-      // Extract mata pelajaran data from enrollments
       const mataPelajaranList = enrollments.map(enrollment => enrollment.mataPelajaran);
 
       response.success(res, mataPelajaranList, "Sukses mengambil data mata pelajaran yang diikuti");
@@ -113,17 +105,14 @@ export default {
         return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
       }
 
-      // Find the student data for the logged-in user
       const student = await StudentModel.findOne({ userId: req.user.id });
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
       }
 
-      // Get all enrollments for this student
       const enrollments = await EnrollmentModel.find({ student: student._id });
       const mataPelajaranIds = enrollments.map(enrollment => enrollment.mataPelajaran);
 
-      // Get all assignments for the enrolled mata pelajaran
       const assignments = await AssignmentModel.find({ 
         mataPelajaranId: { $in: mataPelajaranIds } 
       })
@@ -136,20 +125,15 @@ export default {
         select: 'judul'
       });
 
-      // Transform the data to match the expected format in the frontend
       const transformedAssignments = assignments.map(assignment => {
-        // Convert to plain object and use type assertion
         const assignmentObj = assignment.toObject();
         
-        // Create mataPelajaran object with safe access
         const mataPelajaranObj = assignmentObj.mataPelajaranId as any;
         
-        // Check if the assignment is in the student's completed assignments
         const isSubmitted = assignment.submissions?.some(sub => 
           sub.student.toString() === student._id.toString()
         );
         
-        // Check if the assignment is marked as completed by the student
         const isCompleted = student.completedAssignments?.includes((assignment._id as mongoose.Types.ObjectId).toString()) || false;
         
         return {
@@ -161,7 +145,6 @@ export default {
           },
           judul: assignmentObj.title || "",
           deskripsi: assignmentObj.description || "",
-          // Determine status based on submission existence
           status: isSubmitted ? 'selesai' : 'belum_dikerjakan',
           isSubmitted: isSubmitted,
           isCompleted: isCompleted
@@ -185,13 +168,11 @@ export default {
     try {
       const { id } = req.params;
 
-      // Check if student exists
       const student = await StudentModel.findById(id);
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
       }
 
-      // If the request is from a student, ensure they can only access their own data
       if (req.user?.role === ROLES.MURID) {
         const requestingStudent = await StudentModel.findOne({ userId: req.user.id });
         if (!requestingStudent || requestingStudent._id.toString() !== id) {
@@ -200,11 +181,9 @@ export default {
       }
 
 
-      // Get all enrollments for this student
       const enrollments = await EnrollmentModel.find({ student: id });
       const mataPelajaranIds = enrollments.map(enrollment => enrollment.mataPelajaran);
 
-      // Get all assignments for the enrolled mata pelajaran
       const assignments = await AssignmentModel.find({ 
         mataPelajaranId: { $in: mataPelajaranIds } 
       })
@@ -217,12 +196,9 @@ export default {
         select: 'judul'
       });
 
-      // Transform the data to match the expected format in the frontend
       const transformedAssignments = assignments.map(assignment => {
-        // Convert to plain object and use type assertion
         const assignmentObj = assignment.toObject();
         
-        // Create mataPelajaran object with safe access
         const mataPelajaranObj = assignmentObj.mataPelajaranId as any;
         
         return {
@@ -234,7 +210,6 @@ export default {
           },
           judul: assignmentObj.title || "",
           deskripsi: assignmentObj.description || "",
-          // Determine status based on submission existence
           status: assignment.submissions?.some(sub => 
             sub.student.toString() === student._id.toString()
           ) ? 'selesai' : 'belum_dikerjakan'
@@ -260,7 +235,6 @@ export default {
         return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
       }
 
-      // Find the student data for the logged-in user
       const student = await StudentModel.findOne({ userId: req.user.id });
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
@@ -289,7 +263,6 @@ export default {
         return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
       }
 
-      // Find the student data for the logged-in user
       const student = await StudentModel.findOne({ userId: req.user.id });
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
@@ -297,7 +270,6 @@ export default {
 
       const { nis, kelas, noTelp } = req.body;
 
-      // Update student data
       const updatedStudent = await StudentModel.findByIdAndUpdate(
         student._id,
         { nis, kelas, noTelp },
@@ -325,14 +297,12 @@ export default {
     session.startTransaction();
 
     try {
-      // Validate student data
       await studentDAO.validate(req.body);
       
       const { fullName, email, nis, kelas, noTelp } = req.body;
 
-      // Create user account with generated username and password
-      const username = email.split('@')[0]; // use email prefix as username
-      const password = default_password_murid; // generate simple password
+      const username = email.split('@')[0];
+      const password = default_password_murid;
 
       const userData = {
         fullName,
@@ -340,12 +310,11 @@ export default {
         email,
         password,
         role: ROLES.MURID,
-        isActive: true // students are active by default
+        isActive: true
       };
 
       const user = await UserModel.create([userData], { session });
       
-      // Create student profile
       const studentData = {
         fullName,
         email,
@@ -413,13 +382,12 @@ export default {
         .limit(limit)
         .skip((page - 1) * limit)
         .sort({ createdAt: -1 })
-        .select('fullName email nis kelas noTelp') // Only select needed fields
-        .lean() // Get plain JavaScript objects instead of Mongoose documents
+        .select('fullName email nis kelas noTelp')
+        .lean()
         .exec();
 
       const countPromise = StudentModel.countDocuments(query).exec();
 
-      // Execute both queries concurrently
       const [result, count] = await Promise.all([resultPromise, countPromise]);
 
       return response.pagination(
@@ -479,14 +447,12 @@ export default {
         return response.error(res, null, "Data murid tidak ditemukan");
       }
 
-      // Update student data
       const updatedStudent = await StudentModel.findByIdAndUpdate(
         id,
         { fullName, email, nis, kelas, noTelp },
         { new: true, session }
       );
 
-      // Update related user data
       await UserModel.findByIdAndUpdate(
         student.userId,
         { fullName, email },
@@ -553,19 +519,16 @@ export default {
         return response.error(res, null, "Status penyelesaian (isCompleted) harus disertakan");
       }
 
-      // Find the student data for the logged-in user
       const student = await StudentModel.findOne({ userId: req.user.id });
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
       }
 
-      // Find the assignment
       const assignment = await AssignmentModel.findById(id);
       if (!assignment) {
         return response.error(res, null, "Tugas tidak ditemukan");
       }
 
-      // Check if student has any submissions for this assignment
       const hasSubmission = assignment.submissions.some(sub => 
         sub.student.toString() === student._id.toString()
       );
@@ -574,27 +537,20 @@ export default {
         return response.error(res, null, "Anda belum mengumpulkan tugas ini");
       }
 
-      // Store completion status in a custom field in student's document
-      // First, check if the student already has completedAssignments field
       if (!student.completedAssignments) {
-        // If not, initialize it as an empty array
         student.completedAssignments = [];
       }
 
-      // Then update the array based on isCompleted status
       if (isCompleted) {
-        // Add to completed assignments if not already there
         if (!student.completedAssignments.includes(id)) {
           student.completedAssignments.push(id);
         }
       } else {
-        // Remove from completed assignments if there
         student.completedAssignments = student.completedAssignments.filter(
           (assignmentId: string) => assignmentId !== id
         );
       }
 
-      // Save the updated student document
       await student.save();
 
       response.success(res, { isCompleted }, "Status penyelesaian tugas berhasil diperbarui");

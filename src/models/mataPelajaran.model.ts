@@ -84,12 +84,10 @@ const MataPelajaranSchema = new Schema<IMataPelajaran>(
   }
 );
 
-// Add indexes for common queries
 MataPelajaranSchema.index({ tingkatKelas: 1 });
 MataPelajaranSchema.index({ kategori: 1 });
 MataPelajaranSchema.index({ guru: 1 });
 
-// Virtual populate for materiPelajaran
 MataPelajaranSchema.virtual('materiPelajaranList', {
   ref: 'MateriPelajaran',
   localField: '_id',

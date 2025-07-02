@@ -81,7 +81,6 @@ const authController = {
 
       const activationToken = generateActivationToken();
 
-      // Pass raw password, let middleware handle encryption
       const result = await UserModel.create({
         fullName,
         email,
@@ -127,14 +126,12 @@ const authController = {
     try {
       const { token } = req.body;
 
-      // Find user by activation token
       const user = await UserModel.findOne({ activationToken: token });
       
       if (!user) {
         return response.error(res, null, 'Token aktivasi tidak valid');
       }
 
-      // Update user to be active and set role as murid
       const updatedUser = await UserModel.findByIdAndUpdate(
         user._id,
         {
@@ -152,7 +149,6 @@ const authController = {
         return response.error(res, null, 'Gagal mengaktivasi akun');
       }
 
-      // Generate auth token
       const authToken = generateToken({
         id: updatedUser._id,
         role: updatedUser.role,
@@ -181,7 +177,6 @@ const authController = {
     const { identifier, password } = req.body as TLogin;
 
     try {
-      // Find user by email or username
       const user = await UserModel.findOne({
         $or: [
           { email: identifier },
@@ -193,12 +188,10 @@ const authController = {
         return response.unauthorized(res, "User tidak ditemukan");
       }
 
-      // Check if user is activated
       if (!user.isActive) {
         return response.unauthorized(res, "Akun belum diaktivasi. Silakan cek email Anda untuk aktivasi.");
       }
 
-      // Validate password
       const validatePassword: boolean = encrypt(password) === user.password;
 
       if (!validatePassword) {
@@ -302,16 +295,13 @@ const authController = {
         return response.unauthorized(res, "User tidak terautentikasi");
       }
       
-      // Get user from database
       const user = await UserModel.findById(req.user.id);
       if (!user) {
         return response.unauthorized(res, "User tidak ditemukan");
       }
       
-      // Encrypt the provided password for comparison
       const encryptedPassword = encrypt(password);
       
-      // Verify password
       const isPasswordValid = encryptedPassword === user.password;
       
       if (!isPasswordValid) {
@@ -336,7 +326,6 @@ const authController = {
         return response.unauthorized(res, "User tidak terautentikasi");
       }
       
-      // Validate new password
       if (newPassword.length < 6) {
         return response.error(res, null, "Password minimal harus 6 karakter");
       }
@@ -349,20 +338,17 @@ const authController = {
         return response.error(res, null, "Password harus memiliki setidaknya satu angka");
       }
       
-      // Get user from database
       const user = await UserModel.findById(req.user.id);
       if (!user) {
         return response.unauthorized(res, "User tidak ditemukan");
       }
       
-      // Verify current password
       const isCurrentPasswordValid = encrypt(currentPassword) === user.password;
       
       if (!isCurrentPasswordValid) {
         return response.error(res, null, "Password saat ini tidak valid");
       }
       
-      // Update password
       const encryptedNewPassword = encrypt(newPassword);
       
       await UserModel.updateOne(
@@ -383,7 +369,6 @@ const authController = {
     try {
       const { nis, kelas, noTelp, email } = req.body;
 
-      // Find the user and ensure they are a student
       const user = await UserModel.findOne({ 
         email, 
         role: 'murid',
@@ -394,7 +379,6 @@ const authController = {
         return response.error(res, null, "Email tidak valid atau bukan email murid yang aktif");
       }
 
-      // Check if student data already exists
       const existingStudent = await StudentModel.findOne({ 
         $or: [
           { userId: user._id },
@@ -410,7 +394,6 @@ const authController = {
         }
       }
 
-      // Create new student data
       const newStudentData = {
         fullName: user.fullName,
         email: user.email,
@@ -420,10 +403,8 @@ const authController = {
         userId: user._id
       };
 
-      // Validate student data
       await studentDAO.validate(newStudentData);
 
-      // Create student record
       const student = await StudentModel.create([newStudentData], { session });
 
       await session.commitTransaction();
@@ -444,7 +425,6 @@ const authController = {
         return response.error(res, null, "Email harus disertakan");
       }
 
-      // Find user and ensure they are a student
       const user = await UserModel.findOne({ 
         email, 
         role: 'murid',
@@ -455,7 +435,6 @@ const authController = {
         return response.error(res, null, "Email tidak valid atau bukan email murid yang aktif");
       }
 
-      // Find student data
       const student = await StudentModel.findOne({ userId: user._id });
 
       if (!student) {

@@ -20,16 +20,13 @@ export default {
     try {
       const { mataPelajaranId } = req.params;
       
-      // Validate input
       await materiPelajaranDAO.validate(req.body);
 
-      // Get mata pelajaran and verify it exists
       const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      // If user is a guru, verify ownership of mata pelajaran
       if (req.user?.role === ROLES.GURU) {
         const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
         if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
@@ -37,21 +34,18 @@ export default {
         }
       }
 
-      // Get max order number for this mata pelajaran
       const maxOrder = await MateriPelajaranModel.findOne({ mataPelajaran: mataPelajaranId })
         .sort({ order: -1 })
         .select('order');
       
       const nextOrder = maxOrder ? maxOrder.order + 1 : 1;
 
-      // Create materi pelajaran
       const materiPelajaran = await MateriPelajaranModel.create([{
         ...req.body,
         mataPelajaran: mataPelajaranId,
         order: nextOrder
       }], { session });
 
-      // Update mata pelajaran's materiPelajaran array
       await MataPelajaranModel.findByIdAndUpdate(
         mataPelajaranId,
         { $push: { materiPelajaran: materiPelajaran[0]._id } },
@@ -83,13 +77,11 @@ export default {
     const { mataPelajaranId } = req.params;
 
     try {
-      // Verify mata pelajaran exists
       const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      // If user is a guru, verify ownership
       if (req.user?.role === ROLES.GURU) {
         const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
         if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
@@ -149,13 +141,11 @@ export default {
         return response.error(res, null, "Data materi pelajaran tidak ditemukan");
       }
 
-      // Verify mata pelajaran exists and check ownership
       const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      // If user is a guru, verify ownership
       if (req.user?.role === ROLES.GURU) {
         const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
         if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
@@ -182,10 +172,8 @@ export default {
     try {
       const { id, mataPelajaranId } = req.params;
 
-      // Validate input
       await materiPelajaranDAO.validate(req.body);
 
-      // Get existing data
       const materiPelajaran = await MateriPelajaranModel.findOne({
         _id: id,
         mataPelajaran: mataPelajaranId
@@ -195,13 +183,11 @@ export default {
         return response.error(res, null, "Data materi pelajaran tidak ditemukan");
       }
 
-      // Verify mata pelajaran exists and check ownership
       const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      // If user is a guru, verify ownership
       if (req.user?.role === ROLES.GURU) {
         const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
         if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
@@ -209,14 +195,12 @@ export default {
         }
       }
 
-      // If order is being changed, ensure it's valid
       if (req.body.order && req.body.order !== materiPelajaran.order) {
         const count = await MateriPelajaranModel.countDocuments({ mataPelajaran: mataPelajaranId });
         if (req.body.order < 1 || req.body.order > count) {
           return response.error(res, null, "Urutan tidak valid");
         }
 
-        // Reorder other items if necessary
         if (req.body.order > materiPelajaran.order) {
           await MateriPelajaranModel.updateMany(
             {
@@ -238,7 +222,6 @@ export default {
         }
       }
 
-      // Update materi pelajaran
       const result = await MateriPelajaranModel.findByIdAndUpdate(
         id,
         req.body,
@@ -268,7 +251,6 @@ export default {
     try {
       const { id, mataPelajaranId } = req.params;
 
-      // Get existing data
       const materiPelajaran = await MateriPelajaranModel.findOne({
         _id: id,
         mataPelajaran: mataPelajaranId
@@ -278,13 +260,11 @@ export default {
         return response.error(res, null, "Data materi pelajaran tidak ditemukan");
       }
 
-      // Verify mata pelajaran exists and check ownership
       const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      // If user is a guru, verify ownership
       if (req.user?.role === ROLES.GURU) {
         const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
         if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
@@ -292,10 +272,8 @@ export default {
         }
       }
 
-      // Delete materi pelajaran
       await MateriPelajaranModel.findByIdAndDelete(id, { session });
 
-      // Update order of remaining items
       await MateriPelajaranModel.updateMany(
         {
           mataPelajaran: mataPelajaranId,
@@ -305,7 +283,6 @@ export default {
         { session }
       );
 
-      // Remove reference from mata pelajaran
       await MataPelajaranModel.findByIdAndUpdate(
         mataPelajaranId,
         { $pull: { materiPelajaran: id } },
@@ -336,13 +313,11 @@ export default {
       const { mataPelajaranId } = req.params;
       const { items } = req.body as { items: { id: string; order: number }[] };
 
-      // Verify mata pelajaran exists and check ownership
       const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      // If user is a guru, verify ownership
       if (req.user?.role === ROLES.GURU) {
         const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
         if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
@@ -350,7 +325,6 @@ export default {
         }
       }
 
-      // Validate order numbers
       const count = await MateriPelajaranModel.countDocuments({ mataPelajaran: mataPelajaranId });
       const orderSet = new Set(items.map(item => item.order));
       if (orderSet.size !== items.length || 
@@ -359,7 +333,6 @@ export default {
         return response.error(res, null, "Urutan tidak valid");
       }
 
-      // Update order for each item
       const updates = items.map(item => 
         MateriPelajaranModel.findOneAndUpdate(
           { _id: item.id, mataPelajaran: mataPelajaranId },

@@ -19,7 +19,6 @@ export default {
      }]
      */
     try {
-      // Find the teacher record associated with the current user
       const teacher = await TeacherModel.findOne({ userId: req.user?.id });
       
       if (!teacher) {
@@ -46,14 +45,12 @@ export default {
     try {
       const { nrk, noTelp } = req.body;
       
-      // Find the teacher record associated with the current user
       const teacher = await TeacherModel.findOne({ userId: req.user?.id });
       
       if (!teacher) {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
       
-      // Only update the allowed fields
       const updatedTeacher = await TeacherModel.findByIdAndUpdate(
         teacher._id,
         { nrk, noTelp },
@@ -81,14 +78,12 @@ export default {
     session.startTransaction();
 
     try {
-      // Validate teacher data
       await teacherDAO.validate(req.body);
 
       const { fullName, email, nrk, noTelp } = req.body;
 
-      // Create user account with generated username and password
-      const username = email.split("@")[0]; // use email prefix as username
-      const password = default_password_guru; // generate simple password
+      const username = email.split("@")[0];
+      const password = default_password_guru;
 
       const userData = {
         fullName,
@@ -96,12 +91,11 @@ export default {
         email,
         password,
         role: ROLES.GURU,
-        isActive: true, // teachers are active by default
+        isActive: true,
       };
 
       const user = await UserModel.create([userData], { session });
 
-      // Create teacher profile
       const teacherData = {
         fullName,
         email,
@@ -173,12 +167,11 @@ export default {
         .limit(limit)
         .skip((page - 1) * limit)
         .sort({ createdAt: -1 })
-        .lean() // Add lean() to get plain JavaScript objects instead of Mongoose documents
+        .lean()
         .exec();
 
       const countPromise = TeacherModel.countDocuments(query).exec();
 
-      // Execute both queries concurrently
       const [result, count] = await Promise.all([resultPromise, countPromise]);
 
       return response.pagination(
@@ -238,14 +231,12 @@ export default {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
 
-      // Update teacher data
       const updatedTeacher = await TeacherModel.findByIdAndUpdate(
         id,
         { fullName, email, nrk, noTelp },
         { new: true, session }
       );
 
-      // Update related user data
       await UserModel.findByIdAndUpdate(
         teacher.userId,
         { fullName, email },

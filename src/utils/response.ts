@@ -24,7 +24,6 @@ export default {
     message: string, 
     statusCode: number = 500
   ): Response {
-    // Handle Yup validation errors
     if (error instanceof Yup.ValidationError) {
       return res.status(400).json({
         meta: {
@@ -35,7 +34,6 @@ export default {
       });
     }
 
-    // Handle other types of errors
     console.error('Error details:', error);
     return res.status(statusCode).json({
       meta: {

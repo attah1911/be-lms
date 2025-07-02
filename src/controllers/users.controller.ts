@@ -19,7 +19,6 @@ export default {
      }
      */
     try {
-      // Validate user data including password requirements
       await userDAO.validate(req.body);
       const result = await UserModel.create(req.body);
       response.success(res, result, "Sukses membuat data pengguna");
@@ -137,23 +136,18 @@ export default {
       const { id } = req.params;
       const updateData = req.body;
 
-      // Validate update data including password if provided
       await userUpdateDAO.validate(updateData);
 
-      // If password is being updated, encrypt it
       if (updateData.password) {
         updateData.password = encrypt(updateData.password);
       }
 
-      // Check if user exists
       const user = await UserModel.findById(id);
       if (!user) {
         return response.error(res, null, "Data pengguna tidak ditemukan");
       }
 
-      // If role is being changed, handle related data
       if (updateData.role && updateData.role !== user.role) {
-        // Remove existing role-specific data if any
         if (user.role === 'GURU') {
           await mongoose.model('Teacher').findOneAndDelete({ userId: user._id }, { session });
         } else if (user.role === 'MURID') {
@@ -161,7 +155,6 @@ export default {
         }
       }
 
-      // Update user data
       const result = await UserModel.findByIdAndUpdate(
         id,
         updateData,
@@ -196,20 +189,17 @@ export default {
     try {
       const { id } = req.params;
       
-      // Check if user exists and get their role
       const user = await UserModel.findById(id);
       if (!user) {
         return response.error(res, null, "Data pengguna tidak ditemukan");
       }
 
-      // Remove role-specific data if any
       if (user.role === 'GURU') {
         await mongoose.model('Teacher').findOneAndDelete({ userId: user._id }, { session });
       } else if (user.role === 'MURID') {
         await mongoose.model('Student').findOneAndDelete({ userId: user._id }, { session });
       }
 
-      // Remove user
       await UserModel.findByIdAndDelete(id, { session });
 
       await session.commitTransaction();

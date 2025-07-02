@@ -6,14 +6,12 @@ import response from "../utils/response";
 export default {
   async create(req: IReqUser, res: Response) {
     try {
-      // Validate input
       await todoDAO.validate(req.body);
 
       if (!req.user?.id) {
         return response.error(res, null, "User tidak terautentikasi");
       }
 
-      // Create todo item
       const todo = await TodoModel.create({
         ...req.body,
         userId: req.user.id
@@ -96,7 +94,6 @@ export default {
         return response.error(res, null, "User tidak terautentikasi");
       }
 
-      // Validate input
       await todoDAO.validate(req.body);
 
       const todo = await TodoModel.findOne({

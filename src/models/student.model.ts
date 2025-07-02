@@ -16,7 +16,7 @@ export interface Student {
   kelas: string;
   noTelp: string;
   userId: mongoose.Types.ObjectId;
-  completedAssignments?: string[]; // Array of assignment IDs marked as completed
+  completedAssignments?: string[];
 }
 
 const StudentSchema = new Schema<Student>(

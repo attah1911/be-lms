@@ -36,7 +36,6 @@ const mediaController = {
      }
      */
     try {
-      // Check if request is multipart
       const contentType = req.headers['content-type'] || '';
       if (!contentType.includes('multipart/form-data')) {
         return response.error(res, null, "Invalid request format. Expected multipart/form-data");
@@ -48,12 +47,9 @@ const mediaController = {
         return response.error(res, null, "Tidak ada file yang dipilih");
       }
 
-      // File size validation - now handled by multer middleware with appropriate error messages
       
-      // Upload file to cloud storage
       const result = await uploader.uploadSingle(file) as CloudinaryResponse;
       
-      // Return file data
       const fileData = {
         url: result.secure_url,
         publicId: result.public_id,
@@ -61,7 +57,6 @@ const mediaController = {
         resource_type: result.resource_type,
         originalName: file.originalname,
         size: result.bytes,
-        // Include width and height only for images
         ...(result.resource_type === 'image' ? { 
           width: result.width, 
           height: result.height 
@@ -70,7 +65,6 @@ const mediaController = {
 
       return response.success(res, fileData, "Sukses upload file");
     } catch (error: any) {
-      // Check for specific error types
       if (error.message.includes("Cloudinary configuration")) {
         return response.error(res, error, "Konfigurasi upload tidak valid");
       }
@@ -128,7 +122,6 @@ const mediaController = {
       
       const results = await uploader.uploadMultiple(files) as CloudinaryResponse[];
       
-      // Process results to include original filenames
       const processedResults = results.map((result, index) => {
         return {
           url: result.secure_url,
@@ -137,7 +130,6 @@ const mediaController = {
           resource_type: result.resource_type,
           originalName: files[index].originalname,
           size: result.bytes,
-          // Include width and height only for images
           ...(result.resource_type === 'image' ? { 
             width: result.width, 
             height: result.height 

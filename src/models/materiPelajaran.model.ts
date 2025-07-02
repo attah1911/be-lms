@@ -7,7 +7,6 @@ export const materiPelajaranDAO = Yup.object({
     teks: Yup.string(),
     files: Yup.array().of(
       Yup.mixed().transform(value => {
-        // Handle string (for backwards compatibility) or object with url and name
         if (typeof value === 'string') {
           return value;
         } else if (value && typeof value === 'object' && value.url) {
@@ -42,7 +41,6 @@ const MateriPelajaranSchema = new Schema<MateriPelajaran>(
         type: String
       },
       files: [{
-        // Support both string (for backwards compatibility) and object with url and name
         type: Schema.Types.Mixed,
         validate: {
           validator: function(value: any) {
@@ -69,7 +67,6 @@ const MateriPelajaranSchema = new Schema<MateriPelajaran>(
   }
 );
 
-// Add index for efficient querying by mataPelajaran and order
 MateriPelajaranSchema.index({ mataPelajaran: 1, order: 1 });
 
 const MateriPelajaranModel = mongoose.model('MateriPelajaran', MateriPelajaranSchema);

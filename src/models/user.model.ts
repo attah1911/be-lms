@@ -58,7 +58,6 @@ const UserSchema = new Schema<User>(
   }
 );
 
-// middleware
 UserSchema.pre("save", function (next) {
   const user = this;
   user.password = encrypt(user.password);
@@ -68,9 +67,7 @@ UserSchema.pre("save", function (next) {
 UserSchema.post("save", async function (doc, next) {
   try {
     const user = doc;
-    // If needed, add activation email logic here without console.log
   } catch (error) {
-    // Handle error without console.log
   } finally {
     next();
   }

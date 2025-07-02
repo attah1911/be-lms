@@ -1,16 +1,16 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface INotification extends Document {
-  type: string; // 'tugas' | 'materi' | 'info' | 'enrollment' | 'submission' | 'grading_reminder'
+  type: string;
   title: string;
   description: string;
   mataPelajaran: mongoose.Types.ObjectId;
   recipient: {
-    type: string; // 'student' | 'teacher'
+    type: string;
     id: mongoose.Types.ObjectId;
   };
   isRead: boolean;
-  relatedItem?: mongoose.Types.ObjectId; // Reference to related item (assignment submission, enrollment, etc.)
+  relatedItem?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }

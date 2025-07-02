@@ -23,7 +23,6 @@ const EnrollmentSchema = new Schema<IEnrollment>(
   }
 );
 
-// Create a compound index to ensure a student can only be enrolled once in a mata pelajaran
 EnrollmentSchema.index({ mataPelajaran: 1, student: 1 }, { unique: true });
 
 const EnrollmentModel = mongoose.model<IEnrollment>('Enrollment', EnrollmentSchema);

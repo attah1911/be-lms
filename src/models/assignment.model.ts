@@ -1,25 +1,21 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-// Define the enum for submission status
 export enum SubmissionStatus {
   SUBMITTED = 'submitted',
   REVIEWED = 'reviewed',
   REJECTED = 'rejected'
 }
 
-// Interface for file attachments
 export interface IFileAttachment {
   url: string;
   name: string;
 }
 
-// Interface for additional file in submission
 export interface ISubmissionFile {
   fileUrl: string;
   fileName: string;
 }
 
-// Interface for assignment submission
 export interface IAssignmentSubmission extends Document {
   student: Schema.Types.ObjectId;
   fileUrl: string;
@@ -31,7 +27,6 @@ export interface IAssignmentSubmission extends Document {
   additionalFiles?: ISubmissionFile[];
 }
 
-// Interface for assignment
 export interface IAssignment extends Document {
   title: string;
   description: string;
@@ -44,7 +39,6 @@ export interface IAssignment extends Document {
   updatedAt: Date;
 }
 
-// Schema for file attachment
 const FileAttachmentSchema = new Schema<IFileAttachment>({
   url: {
     type: String,
@@ -56,7 +50,6 @@ const FileAttachmentSchema = new Schema<IFileAttachment>({
   }
 });
 
-// Schema for additional file in submission
 const SubmissionFileSchema = new Schema<ISubmissionFile>({
   fileUrl: {
     type: String,
@@ -68,7 +61,6 @@ const SubmissionFileSchema = new Schema<ISubmissionFile>({
   }
 });
 
-// Schema for assignment submission
 const AssignmentSubmissionSchema = new Schema<IAssignmentSubmission>({
   student: {
     type: Schema.Types.ObjectId,
@@ -103,7 +95,6 @@ const AssignmentSubmissionSchema = new Schema<IAssignmentSubmission>({
   additionalFiles: [SubmissionFileSchema]
 });
 
-// Schema for assignment
 const AssignmentSchema = new Schema<IAssignment>({
   title: {
     type: String,
@@ -134,12 +125,10 @@ const AssignmentSchema = new Schema<IAssignment>({
   versionKey: false
 });
 
-// Create and export the Assignment model
 const AssignmentModel = mongoose.model<IAssignment>('Assignment', AssignmentSchema);
 
 export default AssignmentModel;
 
-// Data access object for validation
 export const assignmentDAO = {
   validate: async (data: Partial<IAssignment>) => {
     const assignment = new AssignmentModel(data);

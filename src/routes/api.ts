@@ -26,7 +26,7 @@ router.get("/auth/me", authMiddleware, authController.me);
 router.put("/auth/me", authMiddleware, authController.updateProfile);
 router.post("/auth/change-password", authMiddleware, authController.changePassword);
 router.post("/auth/submit-student-data", authController.submitStudentData);
-router.get("/auth/student-data", authController.getStudentData); // Add new endpoint
+router.get("/auth/student-data", authController.getStudentData); 
 
 // Admin Routes
 router.post("/users", authMiddleware, aclMiddleware([ROLES.ADMIN]), usersController.create);
@@ -36,7 +36,6 @@ router.put("/users/:id", authMiddleware, aclMiddleware([ROLES.ADMIN]), usersCont
 router.delete("/users/:id", authMiddleware, aclMiddleware([ROLES.ADMIN]), usersController.remove);
 
 // Teacher Routes
-// GURU-specific routes - these MUST come before parametric routes to avoid conflicts
 router.get("/teachers/me", authMiddleware, aclMiddleware([ROLES.GURU]), teachersController.getTeacherProfile);
 router.put("/teachers/me", authMiddleware, aclMiddleware([ROLES.GURU]), teachersController.updateTeacherProfile);
 

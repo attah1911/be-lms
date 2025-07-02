@@ -4,7 +4,6 @@ import path from "path";
 import crypto from 'crypto';
 import environment from "../../config/environment";
 
-// Create a single transporter instance
 const transporter = nodemailer.createTransport({
   service: environment.SMTP_SERVICE,
   host: environment.SMTP_HOST,
@@ -15,12 +14,12 @@ const transporter = nodemailer.createTransport({
     pass: environment.SMTP_PASS,
   },
   tls: {
-    rejectUnauthorized: false // Allow self-signed certificates
+    rejectUnauthorized: false
   },
-  pool: true, // Use pooled connections
-  maxConnections: 5, // Limit concurrent connections
-  rateDelta: 1000, // Minimum time between messages in ms
-  rateLimit: 5, // Maximum number of messages per rateDelta
+  pool: true,
+  maxConnections: 5,
+  rateDelta: 1000,
+  rateLimit: 5,
 });
 
 /**
@@ -39,7 +38,6 @@ const renderMailHtml = async (
     const templatePath = path.join(__dirname, `templates/${template}`);
     const content = await ejs.renderFile(templatePath, data);
     
-    // Ensure content is a string
     if (typeof content !== 'string') {
       throw new Error('Template rendering did not return a string');
     }
@@ -51,7 +49,6 @@ const renderMailHtml = async (
   }
 };
 
-// Send activation email
 export const sendActivationEmail = async (
   email: string, 
   username: string,
@@ -59,10 +56,8 @@ export const sendActivationEmail = async (
   activationToken: string
 ): Promise<void> => {
   try {
-    // Generate activation link with token parameter
     const activationLink = `${environment.FRONTEND_URL}/auth/activation?token=${activationToken}`;
 
-    // Get current date formatted in Indonesian
     const createdAt = new Date().toLocaleDateString('id-ID', {
       weekday: 'long',
       year: 'numeric',
@@ -70,7 +65,6 @@ export const sendActivationEmail = async (
       day: 'numeric'
     });
 
-    // Render email template
     const html = await renderMailHtml('registration-success.ejs', {
       username,
       fullName,
@@ -79,10 +73,8 @@ export const sendActivationEmail = async (
       activationLink
     });
 
-    // Generate unique message ID
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2)}@e-learning-smpn37>`;
 
-    // Send mail directly using transporter
     await transporter.sendMail({
       from: `"E-Learning SMPN 37" <${environment.SMTP_USER}>`,
       to: email,
@@ -107,7 +99,6 @@ export const sendActivationEmail = async (
   }
 };
 
-// Verify transporter connection
 transporter.verify((error) => {
   if (error) {
     console.error('SMTP Connection Error:', error);
