@@ -12,6 +12,8 @@ cloudinary.config({
   api_secret: CLOUDINARY_API_SECRET,
 });
 
+// test
+
 const getFolderByFile = (file: Express.Multer.File): string => {
   if (file.fieldname === 'avatar' || file.fieldname === 'profile') {
     return 'profile-pictures';
