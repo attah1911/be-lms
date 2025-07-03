@@ -19,7 +19,8 @@ async function init() {
       origin: [
         environment.FRONTEND_URL || 'http://localhost:3001',
         'https://front-end-e-learning.vercel.app',
-        'http://localhost:3001'
+        'http://localhost:3001',
+        'http://hatta.isdwk.my.id:3001'
       ],
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
