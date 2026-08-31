@@ -1,4 +1,4 @@
-# E-Learning SMPN 37 Jakarta — Backend API
+# Learning Management System SMPN 37 Jakarta — Backend API
 
 REST API for a school learning-management system. Node + TypeScript + Express, backed by PostgreSQL via Prisma.
 
