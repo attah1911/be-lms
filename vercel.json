@@ -4,7 +4,13 @@
     {
       "src": "src/index.ts",
       "use": "@vercel/node",
-      "config": { "includeFiles": ["src/**"] }
+      "config": {
+        "includeFiles": [
+          "src/**",
+          "prisma/**",
+          "node_modules/.prisma/client/**"
+        ]
+      }
     }
   ],
   "routes": [

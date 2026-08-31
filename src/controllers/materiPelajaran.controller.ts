@@ -1,120 +1,106 @@
 import { Response } from "express";
+import { Prisma } from "@prisma/client";
 import { IPaginationQuery, IReqUser } from "../utils/interfaces";
-import MateriPelajaranModel, { materiPelajaranDAO } from "../models/materiPelajaran.model";
-import MataPelajaranModel from "../models/mataPelajaran.model";
+import { prisma } from "../utils/prisma";
+import { materiPelajaranDAO } from "../validators";
 import response from "../utils/response";
-import mongoose from "mongoose";
 import { ROLES } from "../utils/constant";
+
+type MateriRow = Prisma.MateriPelajaranGetPayload<{}>;
+
+// DB stores kontenTeks + files; the API keeps the old `konten: { teks, files }` shape.
+const toApi = (m: MateriRow) => {
+  const { kontenTeks, ...rest } = m;
+  return { ...rest, konten: { teks: kontenTeks ?? "", files: (m.files as unknown[]) ?? [] } };
+};
+
+const kontenToData = (konten: { teks?: string; files?: unknown[] } = {}) => ({
+  kontenTeks: konten.teks ?? null,
+  files: (konten.files ?? []) as Prisma.InputJsonValue,
+});
+
+/** Ensure the logged-in guru owns this mata pelajaran. Returns an error message or null. */
+async function assertGuruAccess(req: IReqUser, guruId: string): Promise<string | null> {
+  if (req.user?.role !== ROLES.GURU) return null;
+  const teacher = await prisma.teacher.findUnique({ where: { userId: req.user.id } });
+  if (!teacher || teacher.id !== guruId) {
+    return "Anda tidak memiliki akses ke mata pelajaran ini";
+  }
+  return null;
+}
 
 export default {
   async create(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['MateriPelajaran']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
-      const { mataPelajaranId } = req.params;
-      
+      const mataPelajaranId = req.params.mataPelajaranId || req.body.mataPelajaran;
       await materiPelajaranDAO.validate(req.body);
 
-      const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
-        }
-      }
+      const denied = await assertGuruAccess(req, mataPelajaran.guruId);
+      if (denied) return response.error(res, null, denied);
 
-      const maxOrder = await MateriPelajaranModel.findOne({ mataPelajaran: mataPelajaranId })
-        .sort({ order: -1 })
-        .select('order');
-      
-      const nextOrder = maxOrder ? maxOrder.order + 1 : 1;
+      const last = await prisma.materiPelajaran.findFirst({
+        where: { mataPelajaranId },
+        orderBy: { order: "desc" },
+        select: { order: true },
+      });
 
-      const materiPelajaran = await MateriPelajaranModel.create([{
-        ...req.body,
-        mataPelajaran: mataPelajaranId,
-        order: nextOrder
-      }], { session });
+      const materi = await prisma.materiPelajaran.create({
+        data: {
+          judul: req.body.judul,
+          ...kontenToData(req.body.konten),
+          order: last ? last.order + 1 : 1,
+          mataPelajaranId,
+        },
+      });
 
-      await MataPelajaranModel.findByIdAndUpdate(
-        mataPelajaranId,
-        { $push: { materiPelajaran: materiPelajaran[0]._id } },
-        { session }
-      );
-
-      await session.commitTransaction();
-      response.success(res, materiPelajaran[0], "Sukses membuat materi pelajaran");
+      response.success(res, toApi(materi), "Sukses membuat materi pelajaran");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal membuat materi pelajaran");
-    } finally {
-      session.endSession();
     }
   },
 
   async findAll(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['MateriPelajaran']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
-    const {
-      page = 1,
-      limit = 10,
-      search,
-    } = req.query as unknown as IPaginationQuery;
+    const { page = 1, limit = 10, search } = req.query as unknown as IPaginationQuery;
     const { mataPelajaranId } = req.params;
 
     try {
-      const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
-        }
-      }
+      const denied = await assertGuruAccess(req, mataPelajaran.guruId);
+      if (denied) return response.error(res, null, denied);
 
-      const query: any = { mataPelajaran: mataPelajaranId };
-
+      const take = Number(limit);
+      const current = Number(page);
+      const where: Prisma.MateriPelajaranWhereInput = { mataPelajaranId };
       if (search) {
-        Object.assign(query, {
-          $or: [
-            { judul: { $regex: search, $options: "i" } },
-            { "konten.teks": { $regex: search, $options: "i" } },
-          ],
-        });
+        where.OR = [
+          { judul: { contains: search, mode: "insensitive" } },
+          { kontenTeks: { contains: search, mode: "insensitive" } },
+        ];
       }
 
-      const result = await MateriPelajaranModel.find(query)
-        .limit(limit)
-        .skip((page - 1) * limit)
-        .sort({ order: 1 })
-        .exec();
+      const [rows, count] = await Promise.all([
+        prisma.materiPelajaran.findMany({
+          where,
+          take,
+          skip: (current - 1) * take,
+          orderBy: { order: "asc" },
+        }),
+        prisma.materiPelajaran.count({ where }),
+      ]);
 
-      const count = await MateriPelajaranModel.countDocuments(query);
       response.pagination(
         res,
-        result,
-        {
-          total: count,
-          totalPages: Math.ceil(count / limit),
-          current: page,
-        },
+        rows.map(toApi),
+        { total: count, totalPages: Math.ceil(count / take), current },
         "Sukses mengambil data materi pelajaran"
       );
     } catch (error) {
@@ -123,236 +109,111 @@ export default {
   },
 
   async findOne(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['MateriPelajaran']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
     try {
       const { id, mataPelajaranId } = req.params;
 
-      const materiPelajaran = await MateriPelajaranModel.findOne({
-        _id: id,
-        mataPelajaran: mataPelajaranId
-      });
-
-      if (!materiPelajaran) {
+      const materi = await prisma.materiPelajaran.findFirst({ where: { id, mataPelajaranId } });
+      if (!materi) {
         return response.error(res, null, "Data materi pelajaran tidak ditemukan");
       }
 
-      const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
-        }
-      }
+      const denied = await assertGuruAccess(req, mataPelajaran.guruId);
+      if (denied) return response.error(res, null, denied);
 
-      response.success(res, materiPelajaran, "Sukses mengambil data materi pelajaran");
+      response.success(res, toApi(materi), "Sukses mengambil data materi pelajaran");
     } catch (error) {
       response.error(res, error, "Gagal mengambil data materi pelajaran");
     }
   },
 
   async update(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['MateriPelajaran']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       const { id, mataPelajaranId } = req.params;
-
       await materiPelajaranDAO.validate(req.body);
 
-      const materiPelajaran = await MateriPelajaranModel.findOne({
-        _id: id,
-        mataPelajaran: mataPelajaranId
-      });
-
-      if (!materiPelajaran) {
+      const materi = await prisma.materiPelajaran.findFirst({ where: { id, mataPelajaranId } });
+      if (!materi) {
         return response.error(res, null, "Data materi pelajaran tidak ditemukan");
       }
 
-      const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
+      const denied = await assertGuruAccess(req, mataPelajaran.guruId);
+      if (denied) return response.error(res, null, denied);
+
+      const newOrder: number | undefined = req.body.order;
+
+      const result = await prisma.$transaction(async (tx) => {
+        if (newOrder && newOrder !== materi.order) {
+          const count = await tx.materiPelajaran.count({ where: { mataPelajaranId } });
+          if (newOrder < 1 || newOrder > count) {
+            throw new Error("Urutan tidak valid");
+          }
+          if (newOrder > materi.order) {
+            await tx.materiPelajaran.updateMany({
+              where: { mataPelajaranId, order: { gt: materi.order, lte: newOrder } },
+              data: { order: { decrement: 1 } },
+            });
+          } else {
+            await tx.materiPelajaran.updateMany({
+              where: { mataPelajaranId, order: { gte: newOrder, lt: materi.order } },
+              data: { order: { increment: 1 } },
+            });
+          }
         }
-      }
 
-      if (req.body.order && req.body.order !== materiPelajaran.order) {
-        const count = await MateriPelajaranModel.countDocuments({ mataPelajaran: mataPelajaranId });
-        if (req.body.order < 1 || req.body.order > count) {
-          return response.error(res, null, "Urutan tidak valid");
-        }
+        return tx.materiPelajaran.update({
+          where: { id },
+          data: {
+            ...(req.body.judul !== undefined ? { judul: req.body.judul } : {}),
+            ...(req.body.konten !== undefined ? kontenToData(req.body.konten) : {}),
+            ...(newOrder !== undefined ? { order: newOrder } : {}),
+          },
+        });
+      });
 
-        if (req.body.order > materiPelajaran.order) {
-          await MateriPelajaranModel.updateMany(
-            {
-              mataPelajaran: mataPelajaranId,
-              order: { $gt: materiPelajaran.order, $lte: req.body.order }
-            },
-            { $inc: { order: -1 } },
-            { session }
-          );
-        } else {
-          await MateriPelajaranModel.updateMany(
-            {
-              mataPelajaran: mataPelajaranId,
-              order: { $gte: req.body.order, $lt: materiPelajaran.order }
-            },
-            { $inc: { order: 1 } },
-            { session }
-          );
-        }
-      }
-
-      const result = await MateriPelajaranModel.findByIdAndUpdate(
-        id,
-        req.body,
-        { new: true, session }
-      );
-
-      await session.commitTransaction();
-      response.success(res, result, "Sukses mengupdate materi pelajaran");
+      response.success(res, toApi(result), "Sukses mengupdate materi pelajaran");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal mengupdate materi pelajaran");
-    } finally {
-      session.endSession();
     }
   },
 
   async remove(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['MateriPelajaran']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       const { id, mataPelajaranId } = req.params;
 
-      const materiPelajaran = await MateriPelajaranModel.findOne({
-        _id: id,
-        mataPelajaran: mataPelajaranId
-      });
-
-      if (!materiPelajaran) {
+      const materi = await prisma.materiPelajaran.findFirst({ where: { id, mataPelajaranId } });
+      if (!materi) {
         return response.error(res, null, "Data materi pelajaran tidak ditemukan");
       }
 
-      const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
-        }
-      }
+      const denied = await assertGuruAccess(req, mataPelajaran.guruId);
+      if (denied) return response.error(res, null, denied);
 
-      await MateriPelajaranModel.findByIdAndDelete(id, { session });
+      await prisma.$transaction([
+        prisma.materiPelajaran.delete({ where: { id } }),
+        prisma.materiPelajaran.updateMany({
+          where: { mataPelajaranId, order: { gt: materi.order } },
+          data: { order: { decrement: 1 } },
+        }),
+      ]);
 
-      await MateriPelajaranModel.updateMany(
-        {
-          mataPelajaran: mataPelajaranId,
-          order: { $gt: materiPelajaran.order }
-        },
-        { $inc: { order: -1 } },
-        { session }
-      );
-
-      await MataPelajaranModel.findByIdAndUpdate(
-        mataPelajaranId,
-        { $pull: { materiPelajaran: id } },
-        { session }
-      );
-
-      await session.commitTransaction();
       response.success(res, null, "Sukses menghapus materi pelajaran");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal menghapus materi pelajaran");
-    } finally {
-      session.endSession();
     }
   },
-
-  async reorder(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['MateriPelajaran']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const { mataPelajaranId } = req.params;
-      const { items } = req.body as { items: { id: string; order: number }[] };
-
-      const mataPelajaran = await MataPelajaranModel.findById(mataPelajaranId);
-      if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
-      }
-
-      if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
-        }
-      }
-
-      const count = await MateriPelajaranModel.countDocuments({ mataPelajaran: mataPelajaranId });
-      const orderSet = new Set(items.map(item => item.order));
-      if (orderSet.size !== items.length || 
-          Math.min(...items.map(i => i.order)) < 1 || 
-          Math.max(...items.map(i => i.order)) > count) {
-        return response.error(res, null, "Urutan tidak valid");
-      }
-
-      const updates = items.map(item => 
-        MateriPelajaranModel.findOneAndUpdate(
-          { _id: item.id, mataPelajaran: mataPelajaranId },
-          { order: item.order },
-          { session }
-        )
-      );
-
-      await Promise.all(updates);
-      await session.commitTransaction();
-
-      const result = await MateriPelajaranModel.find({ mataPelajaran: mataPelajaranId })
-        .sort({ order: 1 });
-
-      response.success(res, result, "Sukses mengubah urutan materi pelajaran");
-    } catch (error) {
-      await session.abortTransaction();
-      response.error(res, error, "Gagal mengubah urutan materi pelajaran");
-    } finally {
-      session.endSession();
-    }
-  }
 };

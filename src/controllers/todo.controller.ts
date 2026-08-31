@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { IPaginationQuery, IReqUser } from "../utils/interfaces";
-import TodoModel, { todoDAO } from "../models/todo.model";
+import { prisma } from "../utils/prisma";
+import { todoDAO } from "../validators";
 import response from "../utils/response";
 
 export default {
@@ -12,9 +13,15 @@ export default {
         return response.error(res, null, "User tidak terautentikasi");
       }
 
-      const todo = await TodoModel.create({
-        ...req.body,
-        userId: req.user.id
+      const { title, description, dueDate, completed } = req.body;
+      const todo = await prisma.todo.create({
+        data: {
+          title,
+          description: description ?? null,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          completed: completed ?? false,
+          userId: req.user.id,
+        },
       });
 
       response.success(res, todo, "Sukses membuat todo");
@@ -24,38 +31,36 @@ export default {
   },
 
   async findAll(req: IReqUser, res: Response) {
-    const {
-      page = 1,
-      limit = 10,
-      completed,
-    } = req.query as unknown as IPaginationQuery & { completed?: string };
+    const { page = 1, limit = 10, completed } = req.query as unknown as IPaginationQuery & {
+      completed?: string;
+    };
 
     try {
       if (!req.user?.id) {
         return response.error(res, null, "User tidak terautentikasi");
       }
 
-      const query: any = { userId: req.user.id };
+      const take = Number(limit);
+      const current = Number(page);
+      const where = {
+        userId: req.user.id,
+        ...(completed !== undefined ? { completed: completed === "true" } : {}),
+      };
 
-      if (completed !== undefined) {
-        query.completed = completed === 'true';
-      }
+      const [result, count] = await Promise.all([
+        prisma.todo.findMany({
+          where,
+          take,
+          skip: (current - 1) * take,
+          orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        }),
+        prisma.todo.count({ where }),
+      ]);
 
-      const result = await TodoModel.find(query)
-        .limit(Number(limit))
-        .skip((Number(page) - 1) * Number(limit))
-        .sort({ dueDate: 1, createdAt: -1 })
-        .exec();
-
-      const count = await TodoModel.countDocuments(query);
       response.pagination(
         res,
         result,
-        {
-          total: count,
-          totalPages: Math.ceil(count / Number(limit)),
-          current: Number(page),
-        },
+        { total: count, totalPages: Math.ceil(count / take), current },
         "Sukses mengambil data todo"
       );
     } catch (error) {
@@ -71,11 +76,7 @@ export default {
         return response.error(res, null, "User tidak terautentikasi");
       }
 
-      const todo = await TodoModel.findOne({
-        _id: id,
-        userId: req.user.id
-      });
-
+      const todo = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
       if (!todo) {
         return response.error(res, null, "Data todo tidak ditemukan");
       }
@@ -96,20 +97,21 @@ export default {
 
       await todoDAO.validate(req.body);
 
-      const todo = await TodoModel.findOne({
-        _id: id,
-        userId: req.user.id
-      });
-
-      if (!todo) {
+      const existing = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
+      if (!existing) {
         return response.error(res, null, "Data todo tidak ditemukan");
       }
 
-      const updatedTodo = await TodoModel.findByIdAndUpdate(
-        id,
-        { ...req.body },
-        { new: true }
-      );
+      const { title, description, dueDate, completed } = req.body;
+      const updatedTodo = await prisma.todo.update({
+        where: { id },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(description !== undefined ? { description } : {}),
+          ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
+          ...(completed !== undefined ? { completed } : {}),
+        },
+      });
 
       response.success(res, updatedTodo, "Sukses memperbarui todo");
     } catch (error) {
@@ -125,17 +127,12 @@ export default {
         return response.error(res, null, "User tidak terautentikasi");
       }
 
-      const todo = await TodoModel.findOne({
-        _id: id,
-        userId: req.user.id
-      });
-
-      if (!todo) {
+      const existing = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
+      if (!existing) {
         return response.error(res, null, "Data todo tidak ditemukan");
       }
 
-      await TodoModel.findByIdAndDelete(id);
-
+      await prisma.todo.delete({ where: { id } });
       response.success(res, null, "Sukses menghapus todo");
     } catch (error) {
       response.error(res, error, "Gagal menghapus todo");
@@ -150,24 +147,19 @@ export default {
         return response.error(res, null, "User tidak terautentikasi");
       }
 
-      const todo = await TodoModel.findOne({
-        _id: id,
-        userId: req.user.id
-      });
-
+      const todo = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
       if (!todo) {
         return response.error(res, null, "Data todo tidak ditemukan");
       }
 
-      const updatedTodo = await TodoModel.findByIdAndUpdate(
-        id,
-        { completed: !todo.completed },
-        { new: true }
-      );
+      const updatedTodo = await prisma.todo.update({
+        where: { id },
+        data: { completed: !todo.completed },
+      });
 
       response.success(res, updatedTodo, "Sukses mengubah status todo");
     } catch (error) {
       response.error(res, error, "Gagal mengubah status todo");
     }
-  }
-}; 
+  },
+};

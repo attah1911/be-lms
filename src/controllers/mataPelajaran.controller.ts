@@ -1,111 +1,104 @@
 import { Response } from "express";
+import { Prisma } from "@prisma/client";
 import { IPaginationQuery, IReqUser } from "../utils/interfaces";
-import MataPelajaranModel, { mataPelajaranDAO } from "../models/mataPelajaran.model";
-import MateriPelajaranModel from "../models/materiPelajaran.model";
-import EnrollmentModel from "../models/enrollment.model";
-import StudentModel from "../models/student.model";
-import NotificationModel from "../models/notification.model";
+import { prisma } from "../utils/prisma";
+import { mataPelajaranDAO } from "../validators";
 import response from "../utils/response";
-import mongoose from "mongoose";
 import { ROLES } from "../utils/constant";
+
+const guruSelect = { select: { fullName: true, email: true, nrk: true } };
+const withRelations = {
+  guru: guruSelect,
+  materiPelajaran: { orderBy: { order: "asc" } as const },
+};
+
+/** Resolve the Teacher row for the logged-in guru, or null. */
+const teacherOf = (userId?: string) =>
+  userId ? prisma.teacher.findUnique({ where: { userId } }) : Promise.resolve(null);
+
+async function notifyGuru(guruId: string, mataPelajaranId: string, title: string, description: string) {
+  try {
+    await prisma.notification.create({
+      data: {
+        type: "enrollment",
+        title,
+        description,
+        mataPelajaranId,
+        recipientTeacherId: guruId,
+      },
+    });
+  } catch {
+    /* notification is best-effort */
+  }
+}
 
 export default {
   async create(req: IReqUser, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       await mataPelajaranDAO.validate(req.body);
+      const { judul, deskripsi, tingkatKelas, kategori } = req.body;
 
-      let guruId = req.body.guru;
+      let guruId: string = req.body.guru;
       if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher) {
-          return response.error(res, null, "Data guru tidak ditemukan");
-        }
-        guruId = teacher._id;
-      }
-
-      const guru = await mongoose.model('Teacher').findById(guruId);
-      if (!guru) {
+        const teacher = await teacherOf(req.user.id);
+        if (!teacher) return response.error(res, null, "Data guru tidak ditemukan");
+        guruId = teacher.id;
+      } else if (!(await prisma.teacher.findUnique({ where: { id: guruId } }))) {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
 
-      const mataPelajaran = await MataPelajaranModel.create([{
-        ...req.body,
-        guru: guruId
-      }], { session });
+      const mataPelajaran = await prisma.mataPelajaran.create({
+        data: { judul, deskripsi, tingkatKelas, kategori, guruId },
+        include: withRelations,
+      });
 
-      const populatedMataPelajaran = await MataPelajaranModel.findById(mataPelajaran[0]._id)
-        .populate('guru', 'fullName email nip');
-
-      await session.commitTransaction();
-      response.success(res, populatedMataPelajaran, "Sukses membuat mata pelajaran");
+      response.success(res, mataPelajaran, "Sukses membuat mata pelajaran");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal membuat mata pelajaran");
-    } finally {
-      session.endSession();
     }
   },
 
   async findAll(req: IReqUser, res: Response) {
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      kategori,
-      guru
-    } = req.query as unknown as IPaginationQuery & { kategori?: string; guru?: string };
+    const { page = 1, limit = 10, search, kategori, guru } = req.query as unknown as IPaginationQuery & {
+      kategori?: string;
+      guru?: string;
+    };
 
     try {
-      const query: any = {};
+      const take = Number(limit);
+      const current = Number(page);
+      const where: Prisma.MataPelajaranWhereInput = {};
 
       if (search) {
-        Object.assign(query, {
-          $or: [
-            { judul: { $regex: search, $options: "i" } },
-            { deskripsi: { $regex: search, $options: "i" } },
-          ],
-        });
+        where.OR = [
+          { judul: { contains: search, mode: "insensitive" } },
+          { deskripsi: { contains: search, mode: "insensitive" } },
+        ];
       }
-
-      if (kategori) {
-        query.kategori = kategori;
-      }
-
-      if (guru) {
-        query.guru = guru;
-      }
+      if (kategori) where.kategori = kategori;
+      if (guru) where.guruId = guru;
 
       if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher) {
-          return response.error(res, null, "Data guru tidak ditemukan");
-        }
-        query.guru = teacher._id;
+        const teacher = await teacherOf(req.user.id);
+        if (!teacher) return response.error(res, null, "Data guru tidak ditemukan");
+        where.guruId = teacher.id;
       }
 
-      const result = await MataPelajaranModel.find(query)
-        .populate('guru', 'fullName email nip')
-        .populate({
-          path: 'materiPelajaranList',
-          options: { sort: { order: 1 } }
-        })
-        .limit(limit)
-        .skip((page - 1) * limit)
-        .sort({ createdAt: -1 })
-        .exec();
+      const [result, count] = await Promise.all([
+        prisma.mataPelajaran.findMany({
+          where,
+          include: withRelations,
+          take,
+          skip: (current - 1) * take,
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.mataPelajaran.count({ where }),
+      ]);
 
-      const count = await MataPelajaranModel.countDocuments(query);
       response.pagination(
         res,
         result,
-        {
-          total: count,
-          totalPages: Math.ceil(count / limit),
-          current: page,
-        },
+        { total: count, totalPages: Math.ceil(count / take), current },
         "Sukses mengambil data mata pelajaran"
       );
     } catch (error) {
@@ -115,22 +108,17 @@ export default {
 
   async findOne(req: IReqUser, res: Response) {
     try {
-      const { id } = req.params;
-
-      const result = await MataPelajaranModel.findById(id)
-        .populate('guru', 'fullName email nip')
-        .populate({
-          path: 'materiPelajaranList',
-          options: { sort: { order: 1 } }
-        });
-
+      const result = await prisma.mataPelajaran.findUnique({
+        where: { id: req.params.id },
+        include: withRelations,
+      });
       if (!result) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || result.guru._id.toString() !== teacher._id.toString()) {
+        const teacher = await teacherOf(req.user.id);
+        if (!teacher || result.guruId !== teacher.id) {
           return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
         }
       }
@@ -142,272 +130,140 @@ export default {
   },
 
   async update(req: IReqUser, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       const { id } = req.params;
-
       await mataPelajaranDAO.validate(req.body);
+      const { judul, deskripsi, tingkatKelas, kategori } = req.body;
 
-      const mataPelajaran = await MataPelajaranModel.findById(id);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
+        const teacher = await teacherOf(req.user.id);
+        if (!teacher || mataPelajaran.guruId !== teacher.id) {
           return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
         }
       }
 
-      const result = await MataPelajaranModel.findByIdAndUpdate(
-        id,
-        req.body,
-        { new: true, session }
-      ).populate('guru', 'fullName email nip')
-       .populate({
-         path: 'materiPelajaranList',
-         options: { sort: { order: 1 } }
-       });
+      const result = await prisma.mataPelajaran.update({
+        where: { id },
+        data: {
+          judul,
+          deskripsi,
+          tingkatKelas,
+          kategori,
+          ...(req.body.guru && req.user?.role !== ROLES.GURU ? { guruId: req.body.guru } : {}),
+        },
+        include: withRelations,
+      });
 
-      await session.commitTransaction();
       response.success(res, result, "Sukses mengupdate mata pelajaran");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal mengupdate mata pelajaran");
-    } finally {
-      session.endSession();
     }
   },
 
   async remove(req: IReqUser, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       const { id } = req.params;
-
-      const mataPelajaran = await MataPelajaranModel.findById(id);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.GURU) {
-        const teacher = await mongoose.model('Teacher').findOne({ userId: req.user.id });
-        if (!teacher || mataPelajaran.guru.toString() !== teacher._id.toString()) {
+        const teacher = await teacherOf(req.user.id);
+        if (!teacher || mataPelajaran.guruId !== teacher.id) {
           return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
         }
       }
 
-      await MateriPelajaranModel.deleteMany(
-        { mataPelajaran: id },
-        { session }
-      );
+      // Cascades to materiPelajaran / assignments / enrollments / notifications.
+      await prisma.mataPelajaran.delete({ where: { id } });
 
-      await MataPelajaranModel.findByIdAndDelete(id, { session });
-
-      await session.commitTransaction();
       response.success(res, null, "Sukses menghapus mata pelajaran");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal menghapus mata pelajaran");
-    } finally {
-      session.endSession();
     }
   },
 
   async getEnrolledStudents(req: IReqUser, res: Response) {
     try {
       const { id } = req.params;
-
-      const mataPelajaran = await MataPelajaranModel.findById(id);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      const enrollments = await EnrollmentModel.find({ mataPelajaran: id })
-        .populate('student', 'fullName email nis kelas noTelp');
+      const enrollments = await prisma.enrollment.findMany({
+        where: { mataPelajaranId: id },
+        include: {
+          student: {
+            select: { id: true, fullName: true, email: true, nis: true, kelas: true, noTelp: true },
+          },
+        },
+      });
 
-      const students = enrollments.map(enrollment => enrollment.student);
-
-      response.success(res, students, "Sukses mengambil data murid yang terdaftar");
+      response.success(
+        res,
+        enrollments.map((e) => e.student),
+        "Sukses mengambil data murid yang terdaftar"
+      );
     } catch (error) {
       response.error(res, error, "Gagal mengambil data murid yang terdaftar");
     }
   },
 
   async enrollStudent(req: IReqUser, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       const { id, studentId } = req.params;
 
-      const mataPelajaran = await MataPelajaranModel.findById(id);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
       let actualStudentId = studentId;
-
       if (req.user?.role === ROLES.MURID) {
-        const studentRecord = await StudentModel.findOne({ userId: req.user.id });
-        if (!studentRecord) {
+        const self = await prisma.student.findUnique({ where: { userId: req.user.id } });
+        if (!self) {
           return response.error(res, null, "Data murid tidak ditemukan untuk pengguna ini");
         }
-        
-        actualStudentId = studentRecord._id.toString();
-        
+        actualStudentId = self.id;
       }
 
-      const student = await StudentModel.findById(actualStudentId);
+      const student = await prisma.student.findUnique({ where: { id: actualStudentId } });
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan");
       }
 
-      const existingEnrollment = await EnrollmentModel.findOne({
-        mataPelajaran: id,
-        student: actualStudentId
+      const existing = await prisma.enrollment.findUnique({
+        where: { mataPelajaranId_studentId: { mataPelajaranId: id, studentId: actualStudentId } },
       });
-
-      if (existingEnrollment) {
+      if (existing) {
         return response.error(res, null, "Murid sudah terdaftar pada mata pelajaran ini");
       }
 
-      const enrollment = await EnrollmentModel.create([{
-        mataPelajaran: id,
-        student: actualStudentId
-      }], { session });
-      
-      try {
-        const guruId = mataPelajaran.guru;
-        
-        const notificationData = {
-          type: 'enrollment',
-          title: 'Pendaftaran Baru',
-          description: `${student.fullName} telah mendaftar pada mata pelajaran "${mataPelajaran.judul}"`,
-          mataPelajaran: id,
-          recipient: {
-            type: 'teacher',
-            id: guruId
-          },
-          isRead: false
-        };
-        
-        await NotificationModel.create([notificationData], { session });
-      } catch (notifError) {
-      }
+      const enrollment = await prisma.enrollment.create({
+        data: { mataPelajaranId: id, studentId: actualStudentId },
+      });
 
-      await session.commitTransaction();
-      response.success(res, enrollment[0], "Sukses mendaftarkan murid ke mata pelajaran");
-    } catch (error) {
-      await session.abortTransaction();
-      response.error(res, error, "Gagal mendaftarkan murid ke mata pelajaran");
-    } finally {
-      session.endSession();
-    }
-  },
-
-  async unenrollStudent(req: IReqUser, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const { id, studentId } = req.params;
-
-      const mataPelajaran = await MataPelajaranModel.findById(id);
-      if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
-      }
-
-      const student = await StudentModel.findById(studentId);
-      if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
-      }
-
-      const result = await EnrollmentModel.findOneAndDelete({
-        mataPelajaran: id,
-        student: studentId
-      }, { session });
-
-      if (!result) {
-        return response.error(res, null, "Murid tidak terdaftar pada mata pelajaran ini");
-      }
-
-      await session.commitTransaction();
-      response.success(res, null, "Sukses menghapus murid dari mata pelajaran");
-    } catch (error) {
-      await session.abortTransaction();
-      response.error(res, error, "Gagal menghapus murid dari mata pelajaran");
-    } finally {
-      session.endSession();
-    }
-  },
-
-  async findAllForGuru(req: IReqUser, res: Response) {
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      kategori,
-    } = req.query as unknown as IPaginationQuery & { kategori?: string };
-
-    try {
-      const query: any = {};
-
-      if (search) {
-        Object.assign(query, {
-          $or: [
-            { judul: { $regex: search, $options: "i" } },
-            { deskripsi: { $regex: search, $options: "i" } },
-          ],
-        });
-      }
-
-      if (kategori) {
-        query.kategori = kategori;
-      }
-
-      const teacher = await mongoose.model('Teacher').findOne({ userId: req.user?.id });
-      if (!teacher) {
-        return response.error(res, null, "Data guru tidak ditemukan");
-      }
-      query.guru = teacher._id;
-
-      const result = await MataPelajaranModel.find(query)
-        .populate('guru', 'fullName email nip') 
-        .populate({
-          path: 'materiPelajaranList',
-          options: { sort: { order: 1 } }
-        })
-        .limit(limit)
-        .skip((page - 1) * limit)
-        .sort({ createdAt: -1 })
-        .exec();
-
-      const count = await MataPelajaranModel.countDocuments(query);
-      
-      response.pagination(
-        res,
-        result,
-        {
-          total: count,
-          totalPages: Math.ceil(count / limit),
-          current: page,
-        },
-        "Sukses mengambil data mata pelajaran guru"
+      await notifyGuru(
+        mataPelajaran.guruId,
+        id,
+        "Pendaftaran Baru",
+        `${student.fullName} telah mendaftar pada mata pelajaran "${mataPelajaran.judul}"`
       );
+
+      response.success(res, enrollment, "Sukses mendaftarkan murid ke mata pelajaran");
     } catch (error) {
-      response.error(res, error, "Gagal mengambil data mata pelajaran guru");
+      response.error(res, error, "Gagal mendaftarkan murid ke mata pelajaran");
     }
   },
 
   async selfEnrollStudent(req: IReqUser, res: Response) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       const { id } = req.params;
 
@@ -415,58 +271,99 @@ export default {
         return response.error(res, null, "Hanya murid yang dapat mendaftarkan dirinya sendiri");
       }
 
-      const mataPelajaran = await MataPelajaranModel.findById(id);
+      const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
         return response.error(res, null, "Data mata pelajaran tidak ditemukan");
       }
 
-      const student = await StudentModel.findOne({ userId: req.user.id });
+      const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
       if (!student) {
         return response.error(res, null, "Data murid tidak ditemukan untuk pengguna ini");
       }
-      
-      const studentId = student._id;
 
-      const existingEnrollment = await EnrollmentModel.findOne({
-        mataPelajaran: id,
-        student: studentId
+      const existing = await prisma.enrollment.findUnique({
+        where: { mataPelajaranId_studentId: { mataPelajaranId: id, studentId: student.id } },
       });
-
-      if (existingEnrollment) {
+      if (existing) {
         return response.error(res, null, "Anda sudah terdaftar pada mata pelajaran ini");
       }
 
-      const enrollment = await EnrollmentModel.create([{
-        mataPelajaran: id,
-        student: studentId
-      }], { session });
-      
-      try {
-        const guruId = mataPelajaran.guru;
-        
-        const notificationData = {
-          type: 'enrollment',
-          title: 'Pendaftaran Baru',
-          description: `${student.fullName} telah mendaftar pada mata pelajaran "${mataPelajaran.judul}"`,
-          mataPelajaran: id,
-          recipient: {
-            type: 'teacher',
-            id: guruId
-          },
-          isRead: false
-        };
-        
-        await NotificationModel.create([notificationData], { session });
-      } catch (notifError) {
+      const enrollment = await prisma.enrollment.create({
+        data: { mataPelajaranId: id, studentId: student.id },
+      });
+
+      await notifyGuru(
+        mataPelajaran.guruId,
+        id,
+        "Pendaftaran Baru",
+        `${student.fullName} telah mendaftar pada mata pelajaran "${mataPelajaran.judul}"`
+      );
+
+      response.success(res, enrollment, "Sukses mendaftar ke mata pelajaran");
+    } catch (error) {
+      response.error(res, error, "Gagal mendaftar ke mata pelajaran");
+    }
+  },
+
+  async unenrollStudent(req: IReqUser, res: Response) {
+    try {
+      const { id, studentId } = req.params;
+
+      const { count } = await prisma.enrollment.deleteMany({
+        where: { mataPelajaranId: id, studentId },
+      });
+      if (count === 0) {
+        return response.error(res, null, "Murid tidak terdaftar pada mata pelajaran ini");
       }
 
-      await session.commitTransaction();
-      response.success(res, enrollment[0], "Sukses mendaftar ke mata pelajaran");
+      response.success(res, null, "Sukses menghapus murid dari mata pelajaran");
     } catch (error) {
-      await session.abortTransaction();
-      response.error(res, error, "Gagal mendaftar ke mata pelajaran");
-    } finally {
-      session.endSession();
+      response.error(res, error, "Gagal menghapus murid dari mata pelajaran");
     }
-  }
+  },
+
+  async findAllForGuru(req: IReqUser, res: Response) {
+    const { page = 1, limit = 10, search, kategori } = req.query as unknown as IPaginationQuery & {
+      kategori?: string;
+    };
+
+    try {
+      const teacher = await teacherOf(req.user?.id);
+      if (!teacher) {
+        return response.error(res, null, "Data guru tidak ditemukan");
+      }
+
+      const take = Number(limit);
+      const current = Number(page);
+      const where: Prisma.MataPelajaranWhereInput = { guruId: teacher.id };
+
+      if (search) {
+        where.OR = [
+          { judul: { contains: search, mode: "insensitive" } },
+          { deskripsi: { contains: search, mode: "insensitive" } },
+        ];
+      }
+      if (kategori) where.kategori = kategori;
+
+      const [result, count] = await Promise.all([
+        prisma.mataPelajaran.findMany({
+          where,
+          include: withRelations,
+          take,
+          skip: (current - 1) * take,
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.mataPelajaran.count({ where }),
+      ]);
+
+      response.pagination(
+        res,
+        result,
+        { total: count, totalPages: Math.ceil(count / take), current },
+        "Sukses mengambil data mata pelajaran guru"
+      );
+    } catch (error) {
+      response.error(res, error, "Gagal mengambil data mata pelajaran guru");
+    }
+  },
 };

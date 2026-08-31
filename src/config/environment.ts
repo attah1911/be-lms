@@ -8,9 +8,6 @@ const environment = {
   PORT: process.env.PORT || 5000,
   NODE_ENV: process.env.NODE_ENV || 'development',
 
-  // Database
-  MONGODB_URI: process.env.DATABASE_URL,
-
   // JWT
   JWT_SECRET: process.env.SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
@@ -35,6 +32,7 @@ const environment = {
 // Validate required environment variables
 const requiredEnvVars = [
   'DATABASE_URL',
+  'DIRECT_URL',
   'SECRET',
   'EMAIL_SMTP_HOST',
   'EMAIL_SMTP_PORT',
