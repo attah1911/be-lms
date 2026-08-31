@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 
 import { prisma } from "../utils/prisma";
 import { registerDAO, userUpdateDAO, studentDAO } from "../validators";
-import { encrypt } from "../utils/encryption";
+import { encrypt, verify } from "../utils/encryption";
 import { generateToken } from "../utils/jwt";
 import { IReqUser } from "../utils/interfaces";
 import response from "../utils/response";
@@ -129,7 +129,7 @@ const authController = {
           "Akun belum diaktivasi. Silakan cek email Anda untuk aktivasi."
         );
       }
-      if (encrypt(password) !== user.password) {
+      if (!verify(password, user.password)) {
         return response.unauthorized(res, "Password Salah");
       }
 
@@ -223,7 +223,7 @@ const authController = {
         return response.unauthorized(res, "User tidak ditemukan");
       }
 
-      if (encrypt(password) !== user.password) {
+      if (!verify(password, user.password)) {
         return response.error(res, null, "Invalid password");
       }
 
@@ -260,7 +260,7 @@ const authController = {
       if (!user) {
         return response.unauthorized(res, "User tidak ditemukan");
       }
-      if (encrypt(currentPassword) !== user.password) {
+      if (!verify(currentPassword, user.password)) {
         return response.error(res, null, "Password saat ini tidak valid");
       }
 
