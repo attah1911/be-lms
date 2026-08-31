@@ -229,15 +229,15 @@ const doc = {
     },
     schemas: {
       LoginRequest: {
-        identifier: "hattayg",
-        password: "hatta123"
+        identifier: "admin@smpn37.sch.id",
+        password: "Admin123"
       },
       RegisterRequest: {
-        fullName: "member2025",
-        username: "member2025",
-        email: "member2025@yopmail.com",
-        password: "Member2025!",
-        confirmPassword: "Member2025!"
+        fullName: "Budi Santoso",
+        username: "budisantoso",
+        email: "budi@example.com",
+        password: "Password123",
+        confirmPassword: "Password123"
       },
       ActivationRequest: {
         code: "abcdef"
