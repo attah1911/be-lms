@@ -70,9 +70,17 @@ You need your own PostgreSQL database — a free [Neon](https://neon.tech) proje
 | | |
 |---|---|
 | `npm run dev` | nodemon + ts-node, port 3000 |
+| `npm test` | unit tests (`node:test` via `tsx`) |
 | `npm run db:seed` | wipe and reseed the database |
 | `npm run db:deploy` | `prisma migrate deploy` (production migrations) |
 | `npm run docs` | regenerate `src/docs/swagger-output.json` |
+
+## Testing
+
+A small `node:test` suite covering the security-sensitive pure logic — password
+hashing (`utils/encryption`), JWT sign/verify (`utils/jwt`), the role guard
+(`middlewares/acl.middleware`), and the `_id` response shim (`utils/response`).
+Files live next to what they test as `*.test.ts`. No test framework, no DB.
 
 ## Project layout
 

@@ -10,18 +10,3 @@ export const encrypt = (password: string): string => bcrypt.hashSync(password, C
 
 export const verify = (password: string, hash: string): boolean =>
   bcrypt.compareSync(password, hash);
-
-// self-check: npx tsx src/utils/encryption.ts
-if (require.main === module) {
-  const check = (label: string, ok: boolean) => {
-    if (!ok) throw new Error(`FAIL: ${label}`);
-    console.log(`ok: ${label}`);
-  };
-  const h = encrypt("Str0ngPass");
-  check("bcrypt hash format", h.startsWith("$2"));
-  check("per-hash salt, not deterministic", h !== encrypt("Str0ngPass"));
-  check("correct password verifies", verify("Str0ngPass", h) === true);
-  check("wrong password rejected", verify("wrong", h) === false);
-  check("legacy pbkdf2 hash fails cleanly", verify("x", "legacy_pbkdf2_hex") === false);
-  console.log("encryption self-check ok");
-}
