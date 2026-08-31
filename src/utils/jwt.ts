@@ -9,7 +9,10 @@ export const generateToken = (user: IUserToken): string => {
   return token;
 };
 
-export const getUserData = (token: string) => {
-    const user = jwt.verify(token, SECRET) as IUserToken;
-    return user;
+export const getUserData = (token: string): IUserToken | null => {
+  try {
+    return jwt.verify(token, SECRET) as IUserToken;
+  } catch {
+    return null;
+  }
 };

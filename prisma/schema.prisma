@@ -1,0 +1,228 @@
+// Prisma schema — LMS Sekolah
+// Migrated from MongoDB/Mongoose. See src/models/*.model.ts (removed) for history.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: connection URLs live in prisma.config.ts (CLI) and the driver
+// adapter in src/utils/prisma.ts (runtime).
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────  Enums  ─────────────────────────────
+
+enum Role {
+  admin
+  guru
+  murid
+}
+
+enum SubmissionStatus {
+  submitted
+  reviewed
+  rejected
+}
+
+enum NotificationType {
+  tugas
+  materi
+  info
+  enrollment
+  submission
+  grading_reminder
+}
+
+// tingkatKelas ("7-A".."9-H") and kategori ("Matematika"..) stay as String —
+// values contain hyphens/spaces, and the Yup DAO already validates them.
+
+// ─────────────────────────────  Models  ────────────────────────────
+
+model User {
+  id              String   @id @default(uuid())
+  fullName        String
+  username        String   @unique
+  email           String   @unique
+  password        String
+  role            Role     @default(murid)
+  profilePicture  String   @default("user.jpg")
+  isActive        Boolean  @default(false)
+  activationToken String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  teacher Teacher?
+  student Student?
+  todos   Todo[]
+}
+
+model Teacher {
+  id        String   @id @default(uuid())
+  fullName  String
+  email     String
+  nrk       String   @unique
+  noTelp    String
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mataPelajaran MataPelajaran[]
+  notifications Notification[]
+}
+
+model Student {
+  id        String   @id @default(uuid())
+  fullName  String
+  email     String
+  nis       String   @unique
+  kelas     String
+  noTelp    String
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments          Enrollment[]
+  submissions          Submission[]
+  completedAssignments AssignmentCompletion[]
+  notifications        Notification[]
+}
+
+model MataPelajaran {
+  id           String   @id @default(uuid())
+  judul        String
+  deskripsi    String
+  tingkatKelas String
+  kategori     String
+  guruId       String
+  guru         Teacher  @relation(fields: [guruId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  materiPelajaran MateriPelajaran[]
+  assignments     Assignment[]
+  enrollments     Enrollment[]
+  notifications   Notification[]
+
+  @@index([tingkatKelas])
+  @@index([kategori])
+  @@index([guruId])
+}
+
+model MateriPelajaran {
+  id              String        @id @default(uuid())
+  judul           String
+  kontenTeks      String?
+  files           Json          @default("[]") // [{ url, name }] or ["url"]
+  order           Int
+  mataPelajaranId String
+  mataPelajaran   MataPelajaran @relation(fields: [mataPelajaranId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  assignments Assignment[]
+
+  @@index([mataPelajaranId, order])
+}
+
+model Assignment {
+  id              String          @id @default(uuid())
+  title           String
+  description     String
+  deadline        DateTime
+  attachments     Json            @default("[]") // [{ url, name }]
+  materiId        String
+  materi          MateriPelajaran @relation(fields: [materiId], references: [id], onDelete: Cascade)
+  mataPelajaranId String
+  mataPelajaran   MataPelajaran   @relation(fields: [mataPelajaranId], references: [id], onDelete: Cascade)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  submissions   Submission[]
+  completions   AssignmentCompletion[]
+  notifications Notification[]
+
+  @@index([materiId])
+  @@index([mataPelajaranId])
+}
+
+model Submission {
+  id              String           @id @default(uuid())
+  fileUrl         String
+  fileName        String
+  submittedAt     DateTime         @default(now())
+  status          SubmissionStatus @default(submitted)
+  feedback        String?
+  score           Int? // 0..100, enforced in controller
+  additionalFiles Json             @default("[]") // [{ fileUrl, fileName }]
+  assignmentId    String
+  assignment      Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([assignmentId, studentId]) // one submission per student per assignment
+  @@index([studentId])
+}
+
+model Enrollment {
+  id              String        @id @default(uuid())
+  mataPelajaranId String
+  mataPelajaran   MataPelajaran @relation(fields: [mataPelajaranId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([mataPelajaranId, studentId])
+  @@index([studentId])
+}
+
+model AssignmentCompletion {
+  id           String     @id @default(uuid())
+  completedAt  DateTime   @default(now())
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, assignmentId])
+}
+
+model Notification {
+  id                  String           @id @default(uuid())
+  type                NotificationType
+  title               String
+  description         String
+  isRead              Boolean          @default(false)
+  mataPelajaranId     String
+  mataPelajaran       MataPelajaran    @relation(fields: [mataPelajaranId], references: [id], onDelete: Cascade)
+  recipientStudentId  String?
+  recipientStudent    Student?         @relation(fields: [recipientStudentId], references: [id], onDelete: Cascade)
+  recipientTeacherId  String?
+  recipientTeacher    Teacher?         @relation(fields: [recipientTeacherId], references: [id], onDelete: Cascade)
+  relatedAssignmentId String?
+  relatedAssignment   Assignment?      @relation(fields: [relatedAssignmentId], references: [id], onDelete: Cascade)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@index([recipientStudentId, isRead])
+  @@index([recipientTeacherId, isRead])
+}
+
+model Todo {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  completed   Boolean   @default(false)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+}

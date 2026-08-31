@@ -1,62 +1,41 @@
 import { Response } from "express";
+import { Prisma } from "@prisma/client";
 import { IPaginationQuery, IReqUser } from "../utils/interfaces";
-import UserModel from "../models/user.model";
-import TeacherModel from "../models/teacher.model";
-import { teacherDAO } from "../models/teacher.model";
+import { prisma } from "../utils/prisma";
+import { teacherDAO } from "../validators";
 import response from "../utils/response";
 import { ROLES } from "../utils/constant";
-import mongoose from "mongoose";
 import { encrypt } from "../utils/encryption";
 
 const default_password_guru = "Smpn37Jakartaguru";
 
 export default {
   async getTeacherProfile(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Teacher']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
     try {
-      const teacher = await TeacherModel.findOne({ userId: req.user?.id });
-      
+      const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
       if (!teacher) {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
-      
       response.success(res, teacher, "Sukses mengambil data guru");
     } catch (error) {
       response.error(res, error, "Gagal mengambil data guru");
     }
   },
-  
+
   async updateTeacherProfile(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Teacher']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.requestBody = {
-       required: true,
-       schema: { $ref: "#/components/schemas/UpdateTeacherProfileRequest" }
-     }
-     */
     try {
       const { nrk, noTelp } = req.body;
-      
-      const teacher = await TeacherModel.findOne({ userId: req.user?.id });
-      
+
+      const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
       if (!teacher) {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
-      
-      const updatedTeacher = await TeacherModel.findByIdAndUpdate(
-        teacher._id,
-        { nrk, noTelp },
-        { new: true }
-      );
-      
+
+      const updatedTeacher = await prisma.teacher.update({
+        where: { id: teacher.id },
+        data: { nrk, noTelp },
+      });
+
       response.success(res, updatedTeacher, "Sukses mengupdate data guru");
     } catch (error) {
       response.error(res, error, "Gagal mengupdate data guru");
@@ -64,124 +43,68 @@ export default {
   },
 
   async create(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Teacher']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.requestBody = {
-       required: true,
-       schema: { $ref: "#/components/schemas/CreateTeacherRequest" }
-     }
-     */
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       await teacherDAO.validate(req.body);
 
       const { fullName, email, nrk, noTelp } = req.body;
-
       const username = email.split("@")[0];
-      const password = default_password_guru;
 
-      const userData = {
-        fullName,
-        username,
-        email,
-        password,
-        role: ROLES.GURU,
-        isActive: true,
-      };
+      const result = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            fullName,
+            username,
+            email,
+            password: encrypt(default_password_guru),
+            role: ROLES.GURU,
+            isActive: true,
+          },
+        });
 
-      const user = await UserModel.create([userData], { session });
+        const teacher = await tx.teacher.create({
+          data: { fullName, email, nrk, noTelp, userId: user.id },
+        });
 
-      const teacherData = {
-        fullName,
-        email,
-        nrk,
-        noTelp,
-        userId: user[0]._id,
-      };
+        return { user, teacher };
+      });
 
-      const teacher = await TeacherModel.create([teacherData], { session });
-
-      await session.commitTransaction();
-      response.success(
-        res,
-        { user: user[0], teacher: teacher[0] },
-        "Sukses membuat data guru"
-      );
+      response.success(res, result, "Sukses membuat data guru");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal membuat data guru");
-    } finally {
-      session.endSession();
     }
   },
 
   async findAll(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Teacher']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.parameters['page'] = {
-       in: 'query',
-       description: 'Page number',
-       required: false
-     }
-     #swagger.parameters['limit'] = {
-       in: 'query',
-       description: 'Items per page',
-       required: false
-     }
-     #swagger.parameters['search'] = {
-       in: 'query',
-       description: 'Search term',
-       required: false
-     }
-     */
-    const {
-      page = 1,
-      limit = 10,
-      search,
-    } = req.query as unknown as IPaginationQuery;
+    const { page = 1, limit = 10, search } = req.query as unknown as IPaginationQuery;
 
     try {
-      const query: any = {};
+      const take = Number(limit);
+      const current = Number(page);
+      const where: Prisma.TeacherWhereInput = search
+        ? {
+            OR: [
+              { fullName: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+              { nrk: { contains: search, mode: "insensitive" } },
+              { noTelp: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {};
 
-      if (search) {
-        Object.assign(query, {
-          $or: [
-            { fullName: { $regex: search, $options: "i" } },
-            { username: { $regex: search, $options: "i" } },
-            { email: { $regex: search, $options: "i" } },
-            { nrk: { $regex: search, $options: "i" } },
-            { noTelp: { $regex: search, $options: "i" } },
-          ],
-        });
-      }
-
-      const resultPromise = TeacherModel.find(query)
-        .limit(limit)
-        .skip((page - 1) * limit)
-        .sort({ createdAt: -1 })
-        .lean()
-        .exec();
-
-      const countPromise = TeacherModel.countDocuments(query).exec();
-
-      const [result, count] = await Promise.all([resultPromise, countPromise]);
+      const [result, count] = await Promise.all([
+        prisma.teacher.findMany({
+          where,
+          take,
+          skip: (current - 1) * take,
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.teacher.count({ where }),
+      ]);
 
       return response.pagination(
         res,
         result,
-        {
-          total: count,
-          totalPages: Math.ceil(count / limit),
-          current: page,
-        },
+        { total: count, totalPages: Math.ceil(count / take), current },
         "Sukses mengambil data guru"
       );
     } catch (error) {
@@ -190,15 +113,8 @@ export default {
   },
 
   async findOne(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Teacher']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
     try {
-      const { id } = req.params;
-      const result = await TeacherModel.findById(id);
+      const result = await prisma.teacher.findUnique({ where: { id: req.params.id } });
       if (!result) {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
@@ -209,77 +125,46 @@ export default {
   },
 
   async update(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Teacher']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.requestBody = {
-       required: true,
-       schema: { $ref: "#/components/schemas/UpdateTeacherRequest" }
-     }
-     */
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
       const { id } = req.params;
       const { fullName, email, nrk, noTelp } = req.body;
 
-      const teacher = await TeacherModel.findById(id);
+      const teacher = await prisma.teacher.findUnique({ where: { id } });
       if (!teacher) {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
 
-      const updatedTeacher = await TeacherModel.findByIdAndUpdate(
-        id,
-        { fullName, email, nrk, noTelp },
-        { new: true, session }
-      );
+      const updatedTeacher = await prisma.$transaction(async (tx) => {
+        const updated = await tx.teacher.update({
+          where: { id },
+          data: { fullName, email, nrk, noTelp },
+        });
+        await tx.user.update({
+          where: { id: teacher.userId },
+          data: { fullName, email },
+        });
+        return updated;
+      });
 
-      await UserModel.findByIdAndUpdate(
-        teacher.userId,
-        { fullName, email },
-        { session }
-      );
-
-      await session.commitTransaction();
       response.success(res, updatedTeacher, "Sukses mengupdate data guru");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal mengupdate data guru");
-    } finally {
-      session.endSession();
     }
   },
 
   async remove(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Teacher']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     */
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
-      const { id } = req.params;
-      const teacher = await TeacherModel.findById(id);
+      const teacher = await prisma.teacher.findUnique({ where: { id: req.params.id } });
       if (!teacher) {
         return response.error(res, null, "Data guru tidak ditemukan");
       }
 
-      await TeacherModel.findByIdAndDelete(id, { session });
-      await UserModel.findByIdAndDelete(teacher.userId, { session });
+      // Deleting the User cascades to the Teacher row (onDelete: Cascade).
+      await prisma.user.delete({ where: { id: teacher.userId } });
 
-      await session.commitTransaction();
       response.success(res, null, "Sukses menghapus data guru");
     } catch (error) {
-      await session.abortTransaction();
       response.error(res, error, "Gagal menghapus data guru");
-    } finally {
-      session.endSession();
     }
   },
 };

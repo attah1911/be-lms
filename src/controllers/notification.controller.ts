@@ -1,86 +1,72 @@
-import { Request, Response } from 'express';
-import { IPaginationQuery, IReqUser } from '../utils/interfaces';
-import NotificationModel from '../models/notification.model';
-import StudentModel from '../models/student.model';
-import TeacherModel from '../models/teacher.model';
-import response from '../utils/response';
-import { ROLES } from '../utils/constant';
-import mongoose from 'mongoose';
+import { Response } from "express";
+import { IReqUser } from "../utils/interfaces";
+import { prisma } from "../utils/prisma";
+import response from "../utils/response";
+import { ROLES } from "../utils/constant";
+
+type RecipientFilter = { recipientStudentId: string } | { recipientTeacherId: string };
+
+/** Map the logged-in user to a notification-recipient filter, or null if not found. */
+async function resolveRecipient(user: IReqUser["user"]): Promise<RecipientFilter | null> {
+  if (user?.role === ROLES.MURID) {
+    const student = await prisma.student.findUnique({ where: { userId: user.id } });
+    return student ? { recipientStudentId: student.id } : null;
+  }
+  if (user?.role === ROLES.GURU) {
+    const teacher = await prisma.teacher.findUnique({ where: { userId: user.id } });
+    return teacher ? { recipientTeacherId: teacher.id } : null;
+  }
+  return null;
+}
+
+const mataPelajaranTitle = { mataPelajaran: { select: { judul: true } } };
 
 export default {
   async getMyNotifications(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Get all notifications for the logged-in student'
-     */
     try {
-      if (!req.user || req.user.role !== ROLES.MURID) {
-        return response.error(res, null, 'Hanya murid yang dapat mengakses endpoint ini');
+      if (req.user?.role !== ROLES.MURID) {
+        return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
       }
+      const recipient = await resolveRecipient(req.user);
+      if (!recipient) return response.error(res, null, "Data murid tidak ditemukan");
 
-      const student = await StudentModel.findOne({ userId: req.user.id });
-      if (!student) {
-        return response.error(res, null, 'Data murid tidak ditemukan');
-      }
-      
-      const notifications = await NotificationModel.find({ 
-        'recipient.type': 'student',
-        'recipient.id': student._id 
-      })
-        .populate('mataPelajaran', 'judul')
-        .sort({ createdAt: -1 });
+      const notifications = await prisma.notification.findMany({
+        where: recipient,
+        include: mataPelajaranTitle,
+        orderBy: { createdAt: "desc" },
+      });
 
-      response.success(res, notifications, 'Sukses mengambil data notifikasi');
+      response.success(res, notifications, "Sukses mengambil data notifikasi");
     } catch (error) {
-      response.error(res, error, 'Gagal mengambil data notifikasi');
+      response.error(res, error, "Gagal mengambil data notifikasi");
     }
   },
 
   async getTeacherNotifications(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Get all notifications for the logged-in teacher'
-     */
     try {
-      if (!req.user || req.user.role !== ROLES.GURU) {
-        return response.error(res, null, 'Hanya guru yang dapat mengakses endpoint ini');
+      if (req.user?.role !== ROLES.GURU) {
+        return response.error(res, null, "Hanya guru yang dapat mengakses endpoint ini");
       }
+      const recipient = await resolveRecipient(req.user);
+      if (!recipient) return response.error(res, null, "Data guru tidak ditemukan");
 
-      const teacher = await TeacherModel.findOne({ userId: req.user.id });
-      if (!teacher) {
-        return response.error(res, null, 'Data guru tidak ditemukan');
-      }
+      const pageNumber = parseInt((req.query.page as string) ?? "1", 10);
+      const limitNumber = parseInt((req.query.limit as string) ?? "10", 10);
+      const where = { ...recipient, ...(req.query.unread === "true" ? { isRead: false } : {}) };
 
-      const { page = '1', limit = '10', unread } = req.query;
-      const pageNumber = parseInt(page as string, 10);
-      const limitNumber = parseInt(limit as string, 10);
-      const skip = (pageNumber - 1) * limitNumber;
-
-      const query: any = { 
-        'recipient.type': 'teacher',
-        'recipient.id': teacher._id 
-      };
-
-      if (unread === 'true') {
-        query.isRead = false;
-      }
-
-      const total = await NotificationModel.countDocuments(query);
-
-      const notifications = await NotificationModel.find(query)
-        .populate('mataPelajaran', 'judul')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNumber);
+      const [total, notifications] = await Promise.all([
+        prisma.notification.count({ where }),
+        prisma.notification.findMany({
+          where,
+          include: mataPelajaranTitle,
+          orderBy: { createdAt: "desc" },
+          skip: (pageNumber - 1) * limitNumber,
+          take: limitNumber,
+        }),
+      ]);
 
       response.success(
-        res, 
+        res,
         {
           data: notifications,
           pagination: {
@@ -88,373 +74,122 @@ export default {
             totalPages: Math.ceil(total / limitNumber),
             current: pageNumber,
             limit: limitNumber,
-          }
-        }, 
-        'Sukses mengambil data notifikasi'
+          },
+        },
+        "Sukses mengambil data notifikasi"
       );
     } catch (error) {
-      response.error(res, error, 'Gagal mengambil data notifikasi');
-    }
-  },
-
-  async debugTeacherNotifications(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Debug endpoint for teacher notifications'
-     */
-    try {
-      if (!req.user || req.user.role !== ROLES.GURU) {
-        return response.error(res, null, 'Hanya guru yang dapat mengakses endpoint ini');
-      }
-
-      const teacher = await TeacherModel.findOne({ userId: req.user.id });
-      if (!teacher) {
-        return response.error(res, null, 'Data guru tidak ditemukan');
-      }
-
-      const allNotifications = await NotificationModel.find({ 
-        'recipient.type': 'teacher',
-        'recipient.id': teacher._id 
-      })
-      .populate('mataPelajaran', 'judul')
-      .sort({ createdAt: -1 });
-
-      const unreadNotifications = await NotificationModel.find({ 
-        'recipient.type': 'teacher',
-        'recipient.id': teacher._id,
-        isRead: false
-      })
-      .populate('mataPelajaran', 'judul')
-      .sort({ createdAt: -1 });
-
-      const unreadCount = await NotificationModel.countDocuments({
-        'recipient.type': 'teacher',
-        'recipient.id': teacher._id,
-        isRead: false
-      });
-
-      const totalNotifications = await NotificationModel.countDocuments({});
-      const teacherNotifications = await NotificationModel.countDocuments({ 'recipient.type': 'teacher' });
-      const studentNotifications = await NotificationModel.countDocuments({ 'recipient.type': 'student' });
-      
-      const notificationTypes = await NotificationModel.aggregate([
-        { $match: { 'recipient.type': 'teacher', 'recipient.id': teacher._id } },
-        { $group: { _id: '$type', count: { $sum: 1 } } }
-      ]);
-
-      response.success(
-        res, 
-        {
-          teacherId: teacher._id,
-          allNotifications: {
-            count: allNotifications.length,
-            data: allNotifications
-          },
-          unreadNotifications: {
-            count: unreadNotifications.length,
-            data: unreadNotifications
-          },
-          unreadCount,
-          systemStats: {
-            totalNotifications,
-            teacherNotifications,
-            studentNotifications,
-            notificationTypes
-          }
-        }, 
-        'Debug information for teacher notifications'
-      );
-    } catch (error) {
-      response.error(res, error, 'Gagal mendapatkan debug information');
+      response.error(res, error, "Gagal mengambil data notifikasi");
     }
   },
 
   async getUnreadNotificationsCount(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Get count of unread notifications for user'
-     */
     try {
-      if (!req.user) {
-        return response.error(res, null, 'User tidak terautentikasi');
+      if (!req.user) return response.error(res, null, "User tidak terautentikasi");
+      const recipient = await resolveRecipient(req.user);
+      if (!recipient) {
+        return response.error(res, null, "Role tidak valid untuk fitur notifikasi");
       }
 
-      let recipientId;
-      let recipientType;
-
-      if (req.user.role === ROLES.MURID) {
-        const student = await StudentModel.findOne({ userId: req.user.id });
-        if (!student) {
-          return response.error(res, null, 'Data murid tidak ditemukan');
-        }
-        recipientId = student._id;
-        recipientType = 'student';
-      } else if (req.user.role === ROLES.GURU) {
-        const teacher = await TeacherModel.findOne({ userId: req.user.id });
-        if (!teacher) {
-          return response.error(res, null, 'Data guru tidak ditemukan');
-        }
-        recipientId = teacher._id;
-        recipientType = 'teacher';
-      } else {
-        return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
-      }
-
-      const unreadCount = await NotificationModel.countDocuments({
-        'recipient.type': recipientType,
-        'recipient.id': recipientId,
-        isRead: false
-      });
-
-      response.success(
-        res,
-        { count: unreadCount },
-        'Sukses mengambil jumlah notifikasi yang belum dibaca'
-      );
+      const count = await prisma.notification.count({ where: { ...recipient, isRead: false } });
+      response.success(res, { count }, "Sukses mengambil jumlah notifikasi yang belum dibaca");
     } catch (error) {
-      response.error(res, error, 'Gagal mengambil jumlah notifikasi yang belum dibaca');
+      response.error(res, error, "Gagal mengambil jumlah notifikasi yang belum dibaca");
     }
   },
 
   async markAsRead(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Mark a notification as read'
-     */
     try {
-      if (!req.user) {
-        return response.error(res, null, 'User tidak terautentikasi');
+      if (!req.user) return response.error(res, null, "User tidak terautentikasi");
+      const recipient = await resolveRecipient(req.user);
+      if (!recipient) {
+        return response.error(res, null, "Role tidak valid untuk fitur notifikasi");
       }
 
-      const { id } = req.params;
-      let recipientId;
-      let recipientType;
-
-      if (req.user.role === ROLES.MURID) {
-      const student = await StudentModel.findOne({ userId: req.user.id });
-      if (!student) {
-        return response.error(res, null, 'Data murid tidak ditemukan');
-      }
-        recipientId = student._id;
-        recipientType = 'student';
-      } else if (req.user.role === ROLES.GURU) {
-        const teacher = await TeacherModel.findOne({ userId: req.user.id });
-        if (!teacher) {
-          return response.error(res, null, 'Data guru tidak ditemukan');
-        }
-        recipientId = teacher._id;
-        recipientType = 'teacher';
-      } else {
-        return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
-      }
-
-      const notification = await NotificationModel.findOne({
-        _id: id,
-        'recipient.type': recipientType,
-        'recipient.id': recipientId
+      const { count } = await prisma.notification.updateMany({
+        where: { id: req.params.id, ...recipient },
+        data: { isRead: true },
       });
-
-      if (!notification) {
-        return response.error(res, null, 'Notifikasi tidak ditemukan');
+      if (count === 0) {
+        return response.error(res, null, "Notifikasi tidak ditemukan");
       }
 
-      notification.isRead = true;
-      await notification.save();
-
-      response.success(res, notification, 'Notifikasi berhasil ditandai sebagai telah dibaca');
+      const notification = await prisma.notification.findUnique({ where: { id: req.params.id } });
+      response.success(res, notification, "Notifikasi berhasil ditandai sebagai telah dibaca");
     } catch (error) {
-      response.error(res, error, 'Gagal menandai notifikasi sebagai telah dibaca');
+      response.error(res, error, "Gagal menandai notifikasi sebagai telah dibaca");
     }
   },
 
   async markAllAsRead(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Mark all notifications as read for the logged-in user'
-     */
     try {
-      if (!req.user) {
-        return response.error(res, null, 'User tidak terautentikasi');
+      if (!req.user) return response.error(res, null, "User tidak terautentikasi");
+      const recipient = await resolveRecipient(req.user);
+      if (!recipient) {
+        return response.error(res, null, "Role tidak valid untuk fitur notifikasi");
       }
 
-      let recipientId;
-      let recipientType;
-
-      if (req.user.role === ROLES.MURID) {
-      const student = await StudentModel.findOne({ userId: req.user.id });
-      if (!student) {
-        return response.error(res, null, 'Data murid tidak ditemukan');
-      }
-        recipientId = student._id;
-        recipientType = 'student';
-      } else if (req.user.role === ROLES.GURU) {
-        const teacher = await TeacherModel.findOne({ userId: req.user.id });
-        if (!teacher) {
-          return response.error(res, null, 'Data guru tidak ditemukan');
-        }
-        recipientId = teacher._id;
-        recipientType = 'teacher';
-      } else {
-        return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
-      }
-
-      const result = await NotificationModel.updateMany(
-        { 
-          'recipient.type': recipientType,
-          'recipient.id': recipientId,
-          isRead: false 
-        },
-        { isRead: true }
-      );
+      const result = await prisma.notification.updateMany({
+        where: { ...recipient, isRead: false },
+        data: { isRead: true },
+      });
 
       response.success(
         res,
-        { modifiedCount: result.modifiedCount },
-        'Semua notifikasi berhasil ditandai sebagai telah dibaca'
+        { modifiedCount: result.count },
+        "Semua notifikasi berhasil ditandai sebagai telah dibaca"
       );
     } catch (error) {
-      response.error(res, error, 'Gagal menandai semua notifikasi sebagai telah dibaca');
+      response.error(res, error, "Gagal menandai semua notifikasi sebagai telah dibaca");
     }
   },
 
   async createNotification(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Create a new notification'
-     */
     try {
-      if (!req.user || (req.user.role !== ROLES.ADMIN && req.user.role !== ROLES.GURU)) {
-        return response.error(res, null, 'Anda tidak memiliki akses untuk membuat notifikasi');
+      if (req.user?.role !== ROLES.ADMIN && req.user?.role !== ROLES.GURU) {
+        return response.error(res, null, "Anda tidak memiliki akses untuk membuat notifikasi");
       }
 
-      const { type, title, description, mataPelajaran, recipientType, recipientId, relatedItem } = req.body;
+      const { type, title, description, mataPelajaran, recipientType, recipientId, relatedItem } =
+        req.body;
 
       if (!type || !title || !description || !mataPelajaran || !recipientType || !recipientId) {
-        return response.error(res, null, 'Semua field wajib harus diisi');
+        return response.error(res, null, "Semua field wajib harus diisi");
       }
 
-      const notification = new NotificationModel({
-        type,
-        title,
-        description,
-        mataPelajaran,
-        recipient: {
-          type: recipientType,
-          id: recipientId
+      const notification = await prisma.notification.create({
+        data: {
+          type,
+          title,
+          description,
+          mataPelajaranId: mataPelajaran,
+          ...(recipientType === "teacher"
+            ? { recipientTeacherId: recipientId }
+            : { recipientStudentId: recipientId }),
+          ...(relatedItem ? { relatedAssignmentId: relatedItem } : {}),
         },
-        relatedItem,
-        isRead: false,
       });
 
-      await notification.save();
-
-      response.success(res, notification, 'Notifikasi berhasil dibuat');
+      response.success(res, notification, "Notifikasi berhasil dibuat");
     } catch (error) {
-      response.error(res, error, 'Gagal membuat notifikasi');
+      response.error(res, error, "Gagal membuat notifikasi");
     }
   },
 
   async deleteNotification(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Delete a notification'
-     */
     try {
-      if (!req.user || (req.user.role !== ROLES.ADMIN && req.user.role !== ROLES.GURU)) {
-        return response.error(res, null, 'Anda tidak memiliki akses untuk menghapus notifikasi');
+      if (req.user?.role !== ROLES.ADMIN && req.user?.role !== ROLES.GURU) {
+        return response.error(res, null, "Anda tidak memiliki akses untuk menghapus notifikasi");
       }
 
-      const { id } = req.params;
-
-      const notification = await NotificationModel.findByIdAndDelete(id);
-
-      if (!notification) {
-        return response.error(res, null, 'Notifikasi tidak ditemukan');
+      const { count } = await prisma.notification.deleteMany({ where: { id: req.params.id } });
+      if (count === 0) {
+        return response.error(res, null, "Notifikasi tidak ditemukan");
       }
 
-      response.success(res, notification, 'Notifikasi berhasil dihapus');
+      response.success(res, null, "Notifikasi berhasil dihapus");
     } catch (error) {
-      response.error(res, error, 'Gagal menghapus notifikasi');
+      response.error(res, error, "Gagal menghapus notifikasi");
     }
   },
-  
-  async createTestNotification(req: IReqUser, res: Response) {
-    /**
-     #swagger.tags = ['Notification']
-     #swagger.security = [{
-       "bearerAuth": []
-     }]
-     #swagger.description = 'Create a test notification for the current user'
-     */
-    try {
-      if (!req.user) {
-        return response.error(res, null, 'User tidak terautentikasi');
-      }
-
-      let recipientId;
-      let recipientType;
-      let mataPelajaranId;
-
-      if (req.user.role === ROLES.MURID) {
-        const student = await StudentModel.findOne({ userId: req.user.id });
-        if (!student) {
-          return response.error(res, null, 'Data murid tidak ditemukan');
-        }
-        recipientId = student._id;
-        recipientType = 'student';
-      } else if (req.user.role === ROLES.GURU) {
-        const teacher = await TeacherModel.findOne({ userId: req.user.id });
-        if (!teacher) {
-          return response.error(res, null, 'Data guru tidak ditemukan');
-        }
-        recipientId = teacher._id;
-        recipientType = 'teacher';
-      } else {
-        return response.error(res, null, 'Role tidak valid untuk fitur notifikasi');
-      }
-
-      const mataPelajaran = await mongoose.model('MataPelajaran').findOne();
-      if (!mataPelajaran) {
-        return response.error(res, null, 'Tidak ada mata pelajaran yang tersedia');
-      }
-      mataPelajaranId = mataPelajaran._id;
-
-      const notification = new NotificationModel({
-        type: req.user.role === ROLES.GURU ? 'submission' : 'tugas',
-        title: 'Notifikasi Test',
-        description: `Ini adalah notifikasi test untuk ${req.user.role === ROLES.GURU ? 'guru' : 'murid'}`,
-        mataPelajaran: mataPelajaranId,
-        recipient: {
-          type: recipientType,
-          id: recipientId
-        },
-        relatedItem: mataPelajaranId,
-        isRead: false
-      });
-
-      await notification.save();
-
-      response.success(res, notification, 'Notifikasi test berhasil dibuat');
-    } catch (error) {
-      response.error(res, error, 'Gagal membuat notifikasi test');
-    }
-  }
 };

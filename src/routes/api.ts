@@ -148,12 +148,10 @@ router.get("/assignments/check-closed", authMiddleware, aclMiddleware([ROLES.ADM
 // Notification routes
 router.get("/notifications", authMiddleware, aclMiddleware([ROLES.MURID]), notificationController.getMyNotifications);
 router.get("/notifications/teacher", authMiddleware, aclMiddleware([ROLES.GURU]), notificationController.getTeacherNotifications);
-router.get("/notifications/teacher/debug", authMiddleware, aclMiddleware([ROLES.GURU]), notificationController.debugTeacherNotifications);
 router.get("/notifications/unread/count", authMiddleware, notificationController.getUnreadNotificationsCount);
 router.put("/notifications/:id/read", authMiddleware, notificationController.markAsRead);
 router.put("/notifications/read/all", authMiddleware, notificationController.markAllAsRead);
 router.post("/notifications", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), notificationController.createNotification);
-router.post("/notifications/test", authMiddleware, notificationController.createTestNotification);
 router.delete("/notifications/:id", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), notificationController.deleteNotification);
 
 // Media Routes
