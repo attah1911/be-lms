@@ -14,7 +14,7 @@ export default {
     try {
       const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
       if (!teacher) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
       response.success(res, teacher, "Sukses mengambil data guru");
     } catch (error) {
@@ -28,7 +28,7 @@ export default {
 
       const teacher = await prisma.teacher.findUnique({ where: { userId: req.user?.id } });
       if (!teacher) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
 
       const updatedTeacher = await prisma.teacher.update({
@@ -116,7 +116,7 @@ export default {
     try {
       const result = await prisma.teacher.findUnique({ where: { id: req.params.id } });
       if (!result) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
       response.success(res, result, "Sukses mengambil data guru");
     } catch (error) {
@@ -131,7 +131,7 @@ export default {
 
       const teacher = await prisma.teacher.findUnique({ where: { id } });
       if (!teacher) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
 
       const updatedTeacher = await prisma.$transaction(async (tx) => {
@@ -156,7 +156,7 @@ export default {
     try {
       const teacher = await prisma.teacher.findUnique({ where: { id: req.params.id } });
       if (!teacher) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
 
       // Deleting the User cascades to the Teacher row (onDelete: Cascade).

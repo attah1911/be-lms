@@ -43,9 +43,40 @@ export default {
     });
   },
 
+  /**
+   * 401 — the caller is not authenticated: no token, a bad/expired one, or
+   * wrong credentials. The frontend signs the user out on this and only this.
+   */
+  unauthenticated(res: Response, message: string = "unauthenticated"): Response {
+    return res.status(401).json({
+      meta: { status: 401, message },
+      data: null,
+    });
+  },
+
+  /**
+   * 403 — authenticated, but not allowed to touch this resource (wrong role,
+   * not the owner). Must NOT sign the user out.
+   */
   unauthorized(res: Response, message: string = "unauthorized"): Response {
     return res.status(403).json({
       meta: { status: 403, message },
+      data: null,
+    });
+  },
+
+  /** 404 — the resource does not exist, or is hidden from this caller. */
+  notFound(res: Response, message: string): Response {
+    return res.status(404).json({
+      meta: { status: 404, message },
+      data: null,
+    });
+  },
+
+  /** 400 — the request itself is malformed or fails a business rule. */
+  badRequest(res: Response, message: string): Response {
+    return res.status(400).json({
+      meta: { status: 400, message },
       data: null,
     });
   },

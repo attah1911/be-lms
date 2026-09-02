@@ -8,8 +8,9 @@ import { ROLES } from "../utils/constant";
 
 type SubmissionFile = { fileUrl: string; fileName: string };
 
-// Keep the old response shapes: `materiId` / `mataPelajaranId` as populated
-// objects, and each submission carrying a `file` + defaulted `additionalFiles`.
+// `materiId` / `mataPelajaranId` stay plain id strings — the populated rows are
+// exposed as `materi` / `mataPelajaran`. Each submission carries a `file` +
+// defaulted `additionalFiles`.
 const shapeSubmission = (s: any) => ({
   ...s,
   additionalFiles: s.additionalFiles ?? [],
@@ -18,8 +19,6 @@ const shapeSubmission = (s: any) => ({
 
 const shapeAssignment = (a: any) => ({
   ...a,
-  ...(a.materi ? { materiId: a.materi } : {}),
-  ...(a.mataPelajaran ? { mataPelajaranId: a.mataPelajaran } : {}),
   ...(Array.isArray(a.submissions) ? { submissions: a.submissions.map(shapeSubmission) } : {}),
 });
 
@@ -30,6 +29,74 @@ const fullAssignmentInclude = {
     include: { student: { select: { id: true, fullName: true, email: true, nis: true, kelas: true } } },
   },
 } satisfies Prisma.AssignmentInclude;
+
+/**
+ * Same shape as `fullAssignmentInclude`, but a murid only ever sees their own
+ * submissions — classmates' names, files, scores and feedback stay hidden.
+ */
+const scopedAssignmentInclude = (studentId: string | null) =>
+  ({
+    ...fullAssignmentInclude,
+    submissions: {
+      ...(studentId ? { where: { studentId } } : {}),
+      include: fullAssignmentInclude.submissions.include,
+    },
+  }) satisfies Prisma.AssignmentInclude;
+
+/**
+ * Which mata pelajaran the requester is allowed to read, and — for a murid —
+ * their student id. `mataPelajaranIds: null` means unrestricted (admin).
+ */
+async function requesterScope(
+  req: IReqUser
+): Promise<{ mataPelajaranIds: string[] | null; studentId: string | null }> {
+  const role = req.user?.role;
+  const userId = req.user?.id;
+
+  if (role === ROLES.ADMIN) return { mataPelajaranIds: null, studentId: null };
+
+  if (role === ROLES.GURU) {
+    const teacher = userId ? await prisma.teacher.findUnique({ where: { userId } }) : null;
+    if (!teacher) return { mataPelajaranIds: [], studentId: null };
+    const owned = await prisma.mataPelajaran.findMany({
+      where: { guruId: teacher.id },
+      select: { id: true },
+    });
+    return { mataPelajaranIds: owned.map((m) => m.id), studentId: null };
+  }
+
+  const student = userId ? await prisma.student.findUnique({ where: { userId } }) : null;
+  if (!student) return { mataPelajaranIds: [], studentId: null };
+  const enrollments = await prisma.enrollment.findMany({
+    where: { studentId: student.id },
+    select: { mataPelajaranId: true },
+  });
+  return {
+    mataPelajaranIds: enrollments.map((e) => e.mataPelajaranId),
+    studentId: student.id,
+  };
+}
+
+/** Inaccessible rows are reported as 404 so they don't reveal their existence. */
+/**
+ * What `findAll` joins. Grading screens ask for the submissions; list screens
+ * get a count instead. A murid gets neither the count nor other students' rows,
+ * so they cannot learn how many classmates have submitted.
+ */
+export const listAssignmentInclude = (
+  studentId: string | null,
+  withSubmissions: boolean
+): Prisma.AssignmentInclude =>
+  withSubmissions
+    ? scopedAssignmentInclude(studentId)
+    : {
+        materi: { select: { id: true, judul: true } },
+        mataPelajaran: { select: { id: true, judul: true } },
+        ...(studentId ? {} : { _count: { select: { submissions: true } } }),
+      };
+
+export const isOutOfScope = (mataPelajaranIds: string[] | null, mataPelajaranId: string) =>
+  mataPelajaranIds !== null && !mataPelajaranIds.includes(mataPelajaranId);
 
 /** Ensure the logged-in guru owns the mata pelajaran of this assignment. */
 async function assertGuruOwnsAssignment(req: IReqUser, mataPelajaranId: string): Promise<string | null> {
@@ -54,11 +121,11 @@ export default {
         prisma.materiPelajaran.findUnique({ where: { id: materiId } }),
         prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } }),
       ]);
-      if (!materi) return response.error(res, null, "Data materi tidak ditemukan");
-      if (!mataPelajaran) return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+      if (!materi) return response.notFound(res, "Data materi tidak ditemukan");
+      if (!mataPelajaran) return response.notFound(res, "Data mata pelajaran tidak ditemukan");
 
       const denied = await assertGuruOwnsAssignment(req, mataPelajaranId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       const assignment = await prisma.assignment.create({
         data: {
@@ -69,6 +136,7 @@ export default {
           mataPelajaranId,
           attachments: (attachments ?? []) as Prisma.InputJsonValue,
         },
+        include: fullAssignmentInclude,
       });
 
       try {
@@ -92,19 +160,32 @@ export default {
         /* notifications are best-effort */
       }
 
-      response.success(res, assignment, "Sukses membuat tugas");
+      response.success(res, shapeAssignment(assignment), "Sukses membuat tugas");
     } catch (error) {
       response.error(res, error, "Gagal membuat tugas");
     }
   },
 
-  async findAll(_req: IReqUser, res: Response) {
+  async findAll(req: IReqUser, res: Response) {
     try {
+      const { mataPelajaranIds, studentId } = await requesterScope(req);
+      const { mataPelajaranId, withSubmissions } = req.query as {
+        mataPelajaranId?: string;
+        withSubmissions?: string;
+      };
+
+      const where: Prisma.AssignmentWhereInput = {};
+      if (mataPelajaranIds) where.mataPelajaranId = { in: mataPelajaranIds };
+      // an explicit filter may narrow the scope, never widen it
+      if (mataPelajaranId && !isOutOfScope(mataPelajaranIds, mataPelajaranId)) {
+        where.mataPelajaranId = mataPelajaranId;
+      } else if (mataPelajaranId) {
+        return response.success(res, [], "Sukses mengambil data tugas");
+      }
+
       const rows = await prisma.assignment.findMany({
-        include: {
-          materi: { select: { id: true, judul: true } },
-          mataPelajaran: { select: { id: true, judul: true } },
-        },
+        where,
+        include: listAssignmentInclude(studentId, withSubmissions === "true"),
         orderBy: { createdAt: "desc" },
       });
       response.success(res, rows.map(shapeAssignment), "Sukses mengambil data tugas");
@@ -115,9 +196,14 @@ export default {
 
   async findByMateriId(req: IReqUser, res: Response) {
     try {
+      const { mataPelajaranIds, studentId } = await requesterScope(req);
+
       const rows = await prisma.assignment.findMany({
-        where: { materiId: req.params.materiId },
-        include: fullAssignmentInclude,
+        where: {
+          materiId: req.params.materiId,
+          ...(mataPelajaranIds ? { mataPelajaranId: { in: mataPelajaranIds } } : {}),
+        },
+        include: scopedAssignmentInclude(studentId),
         orderBy: { createdAt: "desc" },
       });
       response.success(res, rows.map(shapeAssignment), "Sukses mengambil data tugas");
@@ -128,11 +214,13 @@ export default {
 
   async findOne(req: IReqUser, res: Response) {
     try {
+      const { mataPelajaranIds, studentId } = await requesterScope(req);
+
       const result = await prisma.assignment.findUnique({
         where: { id: req.params.id },
-        include: fullAssignmentInclude,
+        include: scopedAssignmentInclude(studentId),
       });
-      if (!result) {
+      if (!result || isOutOfScope(mataPelajaranIds, result.mataPelajaranId)) {
         return response.error(res, null, "Data tugas tidak ditemukan", 404);
       }
       response.success(res, shapeAssignment(result), "Sukses mengambil data tugas");
@@ -147,11 +235,11 @@ export default {
 
       const assignment = await prisma.assignment.findUnique({ where: { id } });
       if (!assignment) {
-        return response.error(res, null, "Data tugas tidak ditemukan");
+        return response.notFound(res, "Data tugas tidak ditemukan");
       }
 
       const denied = await assertGuruOwnsAssignment(req, assignment.mataPelajaranId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       const { submissions, attachments, ...updateData } = req.body;
       if (Object.keys(updateData).length > 0) {
@@ -186,11 +274,11 @@ export default {
       const { id } = req.params;
       const assignment = await prisma.assignment.findUnique({ where: { id } });
       if (!assignment) {
-        return response.error(res, null, "Data tugas tidak ditemukan");
+        return response.notFound(res, "Data tugas tidak ditemukan");
       }
 
       const denied = await assertGuruOwnsAssignment(req, assignment.mataPelajaranId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       await prisma.assignment.delete({ where: { id } });
       response.success(res, null, "Sukses menghapus tugas");
@@ -300,22 +388,22 @@ export default {
       const { status, feedback } = req.body;
 
       if (!Object.values(SubmissionStatus).includes(status)) {
-        return response.error(res, null, "Status tidak valid");
+        return response.badRequest(res, "Status tidak valid");
       }
 
       const assignment = await prisma.assignment.findUnique({ where: { id } });
       if (!assignment) {
-        return response.error(res, null, "Data tugas tidak ditemukan");
+        return response.notFound(res, "Data tugas tidak ditemukan");
       }
 
       const denied = await assertGuruOwnsAssignment(req, assignment.mataPelajaranId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       const submission = await prisma.submission.findFirst({
         where: { id: submissionId, assignmentId: id },
       });
       if (!submission) {
-        return response.error(res, null, "Data pengumpulan tugas tidak ditemukan");
+        return response.notFound(res, "Data pengumpulan tugas tidak ditemukan");
       }
 
       await prisma.submission.update({
@@ -339,22 +427,22 @@ export default {
       const { score } = req.body;
 
       if (score === undefined || score < 0 || score > 100) {
-        return response.error(res, null, "Nilai tidak valid. Harus berupa angka antara 0-100");
+        return response.badRequest(res, "Nilai tidak valid. Harus berupa angka antara 0-100");
       }
 
       const assignment = await prisma.assignment.findUnique({ where: { id } });
       if (!assignment) {
-        return response.error(res, null, "Data tugas tidak ditemukan");
+        return response.notFound(res, "Data tugas tidak ditemukan");
       }
 
       const denied = await assertGuruOwnsAssignment(req, assignment.mataPelajaranId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       const submission = await prisma.submission.findFirst({
         where: { id: submissionId, assignmentId: id },
       });
       if (!submission) {
-        return response.error(res, null, "Data pengumpulan tugas tidak ditemukan");
+        return response.notFound(res, "Data pengumpulan tugas tidak ditemukan");
       }
 
       await prisma.submission.update({
@@ -411,41 +499,39 @@ export default {
 
       const assignment = await prisma.assignment.findUnique({ where: { id } });
       if (!assignment) {
-        return response.error(res, null, "Data tugas tidak ditemukan");
+        return response.notFound(res, "Data tugas tidak ditemukan");
       }
 
       const submission = await prisma.submission.findFirst({
         where: { id: submissionId, assignmentId: id },
       });
       if (!submission) {
-        return response.error(res, null, "Data pengumpulan tugas tidak ditemukan");
+        return response.notFound(res, "Data pengumpulan tugas tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.MURID) {
         const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
         if (!student) {
-          return response.error(res, null, "Data murid tidak ditemukan");
+          return response.notFound(res, "Data murid tidak ditemukan");
         }
         if (submission.studentId !== student.id) {
-          return response.error(
+          return response.unauthorized(
             res,
-            null,
             "Anda hanya dapat menghapus pengumpulan tugas Anda sendiri"
           );
         }
         if (assignment.deadline < new Date()) {
-          return response.error(res, null, "Batas waktu pengumpulan telah berakhir");
+          return response.badRequest(res, "Batas waktu pengumpulan telah berakhir");
         }
         if (submission.status !== SubmissionStatus.submitted) {
-          return response.error(
+          return response.badRequest(
             res,
-            null,
             "Pengumpulan tugas yang sudah dinilai tidak dapat dihapus"
           );
         }
       } else {
         const denied = await assertGuruOwnsAssignment(req, assignment.mataPelajaranId);
-        if (denied) return response.error(res, null, denied);
+        if (denied) return response.unauthorized(res, denied);
       }
 
       await prisma.submission.delete({ where: { id: submissionId } });

@@ -62,7 +62,7 @@ const authController = {
 
       const user = await prisma.user.findFirst({ where: { email, isActive: false } });
       if (!user) {
-        return response.error(res, null, "Email tidak ditemukan atau akun sudah aktif");
+        return response.notFound(res, "Email tidak ditemukan atau akun sudah aktif");
       }
 
       const activationToken = generateActivationToken();
@@ -82,7 +82,7 @@ const authController = {
 
       const user = await prisma.user.findUnique({ where: { activationToken: token } });
       if (!user) {
-        return response.error(res, null, "Token aktivasi tidak valid");
+        return response.badRequest(res, "Token aktivasi tidak valid");
       }
 
       const updatedUser = await prisma.user.update({
@@ -121,7 +121,7 @@ const authController = {
       });
 
       if (!user) {
-        return response.unauthorized(res, "User tidak ditemukan");
+        return response.unauthenticated(res, "User tidak ditemukan");
       }
       if (!user.isActive) {
         return response.unauthorized(
@@ -130,7 +130,7 @@ const authController = {
         );
       }
       if (!verify(password, user.password)) {
-        return response.unauthorized(res, "Password Salah");
+        return response.unauthenticated(res, "Password Salah");
       }
 
       const token = generateToken({ id: user.id, role: user.role });
@@ -157,7 +157,7 @@ const authController = {
   async me(req: IReqUser, res: Response) {
     try {
       if (!req.user?.id) {
-        return response.unauthorized(res);
+        return response.unauthenticated(res);
       }
       const result = await prisma.user.findUnique({ where: { id: req.user.id } });
       response.success(res, result, "Sukses mengambil user profile");
@@ -169,7 +169,7 @@ const authController = {
   async updateProfile(req: IReqUser, res: Response) {
     try {
       if (!req.user?.id) {
-        return response.unauthorized(res);
+        return response.unauthenticated(res);
       }
       const userId = req.user.id;
       const { fullName, username, email, profilePicture } = req.body;
@@ -209,10 +209,10 @@ const authController = {
     try {
       const { password } = req.body;
       if (!password) {
-        return response.error(res, null, "Password diperlukan");
+        return response.badRequest(res, "Password diperlukan");
       }
       if (!req.user?.id) {
-        return response.unauthorized(res, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
 
       const user = await prisma.user.findUnique({
@@ -220,11 +220,11 @@ const authController = {
         omit: { password: false },
       });
       if (!user) {
-        return response.unauthorized(res, "User tidak ditemukan");
+        return response.unauthenticated(res, "User tidak ditemukan");
       }
 
       if (!verify(password, user.password)) {
-        return response.error(res, null, "Invalid password");
+        return response.unauthenticated(res, "Invalid password");
       }
 
       return response.success(res, { success: true }, "Password valid");
@@ -238,19 +238,19 @@ const authController = {
       const { currentPassword, newPassword } = req.body;
 
       if (!currentPassword || !newPassword) {
-        return response.error(res, null, "Password saat ini dan password baru diperlukan");
+        return response.badRequest(res, "Password saat ini dan password baru diperlukan");
       }
       if (!req.user?.id) {
-        return response.unauthorized(res, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
       if (newPassword.length < 6) {
-        return response.error(res, null, "Password minimal harus 6 karakter");
+        return response.badRequest(res, "Password minimal harus 6 karakter");
       }
       if (!/[A-Z]/.test(newPassword)) {
-        return response.error(res, null, "Password harus memiliki setidaknya satu huruf kapital");
+        return response.badRequest(res, "Password harus memiliki setidaknya satu huruf kapital");
       }
       if (!/\d/.test(newPassword)) {
-        return response.error(res, null, "Password harus memiliki setidaknya satu angka");
+        return response.badRequest(res, "Password harus memiliki setidaknya satu angka");
       }
 
       const user = await prisma.user.findUnique({
@@ -258,10 +258,10 @@ const authController = {
         omit: { password: false },
       });
       if (!user) {
-        return response.unauthorized(res, "User tidak ditemukan");
+        return response.unauthenticated(res, "User tidak ditemukan");
       }
       if (!verify(currentPassword, user.password)) {
-        return response.error(res, null, "Password saat ini tidak valid");
+        return response.badRequest(res, "Password saat ini tidak valid");
       }
 
       await prisma.user.update({
@@ -283,9 +283,8 @@ const authController = {
         where: { email, role: "murid", isActive: true },
       });
       if (!user) {
-        return response.error(
+        return response.badRequest(
           res,
-          null,
           "Email tidak valid atau bukan email murid yang aktif"
         );
       }
@@ -295,8 +294,8 @@ const authController = {
       });
       if (existingStudent) {
         return existingStudent.userId === user.id
-          ? response.error(res, null, "Data murid sudah ada untuk akun ini")
-          : response.error(res, null, "NIS sudah digunakan oleh murid lain");
+          ? response.badRequest(res, "Data murid sudah ada untuk akun ini")
+          : response.badRequest(res, "NIS sudah digunakan oleh murid lain");
       }
 
       const newStudentData = {
@@ -322,16 +321,15 @@ const authController = {
       const { email } = req.query;
 
       if (!email || typeof email !== "string") {
-        return response.error(res, null, "Email harus disertakan");
+        return response.badRequest(res, "Email harus disertakan");
       }
 
       const user = await prisma.user.findFirst({
         where: { email, role: "murid", isActive: true },
       });
       if (!user) {
-        return response.error(
+        return response.badRequest(
           res,
-          null,
           "Email tidak valid atau bukan email murid yang aktif"
         );
       }

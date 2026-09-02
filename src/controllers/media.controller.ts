@@ -38,13 +38,13 @@ const mediaController = {
     try {
       const contentType = req.headers['content-type'] || '';
       if (!contentType.includes('multipart/form-data')) {
-        return response.error(res, null, "Invalid request format. Expected multipart/form-data");
+        return response.badRequest(res, "Invalid request format. Expected multipart/form-data");
       }
 
       const file = req.file;
 
       if (!file) {
-        return response.error(res, null, "Tidak ada file yang dipilih");
+        return response.badRequest(res, "Tidak ada file yang dipilih");
       }
 
       
@@ -117,7 +117,7 @@ const mediaController = {
     try {
       const files = req.files as Express.Multer.File[];
       if (!files || !files.length) {
-        return response.error(res, null, "Tidak ada file yang dipilih");
+        return response.badRequest(res, "Tidak ada file yang dipilih");
       }
       
       const results = await uploader.uploadMultiple(files) as CloudinaryResponse[];
@@ -176,7 +176,7 @@ const mediaController = {
       const { fileUrl } = req.query;
 
       if (!fileUrl || typeof fileUrl !== 'string') {
-        return response.error(res, null, "URL file tidak valid");
+        return response.badRequest(res, "URL file tidak valid");
       }
 
       const result = await uploader.remove(fileUrl);

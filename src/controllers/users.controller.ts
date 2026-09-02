@@ -71,7 +71,7 @@ export default {
     try {
       const result = await prisma.user.findUnique({ where: { id: req.params.id } });
       if (!result) {
-        return response.error(res, null, "Data pengguna tidak ditemukan");
+        return response.notFound(res, "Data pengguna tidak ditemukan");
       }
       response.success(res, result, "Sukses mengambil data pengguna");
     } catch (error) {
@@ -86,7 +86,7 @@ export default {
 
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) {
-        return response.error(res, null, "Data pengguna tidak ditemukan");
+        return response.notFound(res, "Data pengguna tidak ditemukan");
       }
 
       const { fullName, username, email, profilePicture, password, role } = req.body;
@@ -113,7 +113,7 @@ export default {
       const { id } = req.params;
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) {
-        return response.error(res, null, "Data pengguna tidak ditemukan");
+        return response.notFound(res, "Data pengguna tidak ditemukan");
       }
 
       // Cascades to teacher/student/todo rows (onDelete: Cascade).

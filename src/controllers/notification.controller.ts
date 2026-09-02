@@ -25,10 +25,10 @@ export default {
   async getMyNotifications(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.MURID) {
-        return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
+        return response.unauthorized(res, "Hanya murid yang dapat mengakses endpoint ini");
       }
       const recipient = await resolveRecipient(req.user);
-      if (!recipient) return response.error(res, null, "Data murid tidak ditemukan");
+      if (!recipient) return response.notFound(res, "Data murid tidak ditemukan");
 
       const notifications = await prisma.notification.findMany({
         where: recipient,
@@ -45,10 +45,10 @@ export default {
   async getTeacherNotifications(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.GURU) {
-        return response.error(res, null, "Hanya guru yang dapat mengakses endpoint ini");
+        return response.unauthorized(res, "Hanya guru yang dapat mengakses endpoint ini");
       }
       const recipient = await resolveRecipient(req.user);
-      if (!recipient) return response.error(res, null, "Data guru tidak ditemukan");
+      if (!recipient) return response.notFound(res, "Data guru tidak ditemukan");
 
       const pageNumber = parseInt((req.query.page as string) ?? "1", 10);
       const limitNumber = parseInt((req.query.limit as string) ?? "10", 10);
@@ -85,10 +85,10 @@ export default {
 
   async getUnreadNotificationsCount(req: IReqUser, res: Response) {
     try {
-      if (!req.user) return response.error(res, null, "User tidak terautentikasi");
+      if (!req.user) return response.unauthenticated(res, "User tidak terautentikasi");
       const recipient = await resolveRecipient(req.user);
       if (!recipient) {
-        return response.error(res, null, "Role tidak valid untuk fitur notifikasi");
+        return response.badRequest(res, "Role tidak valid untuk fitur notifikasi");
       }
 
       const count = await prisma.notification.count({ where: { ...recipient, isRead: false } });
@@ -100,10 +100,10 @@ export default {
 
   async markAsRead(req: IReqUser, res: Response) {
     try {
-      if (!req.user) return response.error(res, null, "User tidak terautentikasi");
+      if (!req.user) return response.unauthenticated(res, "User tidak terautentikasi");
       const recipient = await resolveRecipient(req.user);
       if (!recipient) {
-        return response.error(res, null, "Role tidak valid untuk fitur notifikasi");
+        return response.badRequest(res, "Role tidak valid untuk fitur notifikasi");
       }
 
       const { count } = await prisma.notification.updateMany({
@@ -111,7 +111,7 @@ export default {
         data: { isRead: true },
       });
       if (count === 0) {
-        return response.error(res, null, "Notifikasi tidak ditemukan");
+        return response.notFound(res, "Notifikasi tidak ditemukan");
       }
 
       const notification = await prisma.notification.findUnique({ where: { id: req.params.id } });
@@ -123,10 +123,10 @@ export default {
 
   async markAllAsRead(req: IReqUser, res: Response) {
     try {
-      if (!req.user) return response.error(res, null, "User tidak terautentikasi");
+      if (!req.user) return response.unauthenticated(res, "User tidak terautentikasi");
       const recipient = await resolveRecipient(req.user);
       if (!recipient) {
-        return response.error(res, null, "Role tidak valid untuk fitur notifikasi");
+        return response.badRequest(res, "Role tidak valid untuk fitur notifikasi");
       }
 
       const result = await prisma.notification.updateMany({
@@ -147,14 +147,14 @@ export default {
   async createNotification(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.ADMIN && req.user?.role !== ROLES.GURU) {
-        return response.error(res, null, "Anda tidak memiliki akses untuk membuat notifikasi");
+        return response.unauthorized(res, "Anda tidak memiliki akses untuk membuat notifikasi");
       }
 
       const { type, title, description, mataPelajaran, recipientType, recipientId, relatedItem } =
         req.body;
 
       if (!type || !title || !description || !mataPelajaran || !recipientType || !recipientId) {
-        return response.error(res, null, "Semua field wajib harus diisi");
+        return response.badRequest(res, "Semua field wajib harus diisi");
       }
 
       const notification = await prisma.notification.create({
@@ -179,12 +179,12 @@ export default {
   async deleteNotification(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.ADMIN && req.user?.role !== ROLES.GURU) {
-        return response.error(res, null, "Anda tidak memiliki akses untuk menghapus notifikasi");
+        return response.unauthorized(res, "Anda tidak memiliki akses untuk menghapus notifikasi");
       }
 
       const { count } = await prisma.notification.deleteMany({ where: { id: req.params.id } });
       if (count === 0) {
-        return response.error(res, null, "Notifikasi tidak ditemukan");
+        return response.notFound(res, "Notifikasi tidak ditemukan");
       }
 
       response.success(res, null, "Notifikasi berhasil dihapus");

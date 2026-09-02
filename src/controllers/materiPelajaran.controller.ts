@@ -37,11 +37,11 @@ export default {
 
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       const denied = await assertGuruAccess(req, mataPelajaran.guruId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       const last = await prisma.materiPelajaran.findFirst({
         where: { mataPelajaranId },
@@ -71,11 +71,11 @@ export default {
     try {
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       const denied = await assertGuruAccess(req, mataPelajaran.guruId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       const take = Number(limit);
       const current = Number(page);
@@ -114,16 +114,16 @@ export default {
 
       const materi = await prisma.materiPelajaran.findFirst({ where: { id, mataPelajaranId } });
       if (!materi) {
-        return response.error(res, null, "Data materi pelajaran tidak ditemukan");
+        return response.notFound(res, "Data materi pelajaran tidak ditemukan");
       }
 
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       const denied = await assertGuruAccess(req, mataPelajaran.guruId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       response.success(res, toApi(materi), "Sukses mengambil data materi pelajaran");
     } catch (error) {
@@ -138,16 +138,16 @@ export default {
 
       const materi = await prisma.materiPelajaran.findFirst({ where: { id, mataPelajaranId } });
       if (!materi) {
-        return response.error(res, null, "Data materi pelajaran tidak ditemukan");
+        return response.notFound(res, "Data materi pelajaran tidak ditemukan");
       }
 
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       const denied = await assertGuruAccess(req, mataPelajaran.guruId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       const newOrder: number | undefined = req.body.order;
 
@@ -192,16 +192,16 @@ export default {
 
       const materi = await prisma.materiPelajaran.findFirst({ where: { id, mataPelajaranId } });
       if (!materi) {
-        return response.error(res, null, "Data materi pelajaran tidak ditemukan");
+        return response.notFound(res, "Data materi pelajaran tidak ditemukan");
       }
 
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id: mataPelajaranId } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       const denied = await assertGuruAccess(req, mataPelajaran.guruId);
-      if (denied) return response.error(res, null, denied);
+      if (denied) return response.unauthorized(res, denied);
 
       await prisma.$transaction([
         prisma.materiPelajaran.delete({ where: { id } }),

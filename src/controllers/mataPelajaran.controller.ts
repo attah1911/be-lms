@@ -41,10 +41,10 @@ export default {
       let guruId: string = req.body.guru;
       if (req.user?.role === ROLES.GURU) {
         const teacher = await teacherOf(req.user.id);
-        if (!teacher) return response.error(res, null, "Data guru tidak ditemukan");
+        if (!teacher) return response.notFound(res, "Data guru tidak ditemukan");
         guruId = teacher.id;
       } else if (!(await prisma.teacher.findUnique({ where: { id: guruId } }))) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
 
       const mataPelajaran = await prisma.mataPelajaran.create({
@@ -80,7 +80,7 @@ export default {
 
       if (req.user?.role === ROLES.GURU) {
         const teacher = await teacherOf(req.user.id);
-        if (!teacher) return response.error(res, null, "Data guru tidak ditemukan");
+        if (!teacher) return response.notFound(res, "Data guru tidak ditemukan");
         where.guruId = teacher.id;
       }
 
@@ -113,13 +113,13 @@ export default {
         include: withRelations,
       });
       if (!result) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.GURU) {
         const teacher = await teacherOf(req.user.id);
         if (!teacher || result.guruId !== teacher.id) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
+          return response.unauthorized(res, "Anda tidak memiliki akses ke mata pelajaran ini");
         }
       }
 
@@ -137,13 +137,13 @@ export default {
 
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.GURU) {
         const teacher = await teacherOf(req.user.id);
         if (!teacher || mataPelajaran.guruId !== teacher.id) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
+          return response.unauthorized(res, "Anda tidak memiliki akses ke mata pelajaran ini");
         }
       }
 
@@ -170,13 +170,13 @@ export default {
       const { id } = req.params;
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.GURU) {
         const teacher = await teacherOf(req.user.id);
         if (!teacher || mataPelajaran.guruId !== teacher.id) {
-          return response.error(res, null, "Anda tidak memiliki akses ke mata pelajaran ini");
+          return response.unauthorized(res, "Anda tidak memiliki akses ke mata pelajaran ini");
         }
       }
 
@@ -194,7 +194,7 @@ export default {
       const { id } = req.params;
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       const enrollments = await prisma.enrollment.findMany({
@@ -222,28 +222,28 @@ export default {
 
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       let actualStudentId = studentId;
       if (req.user?.role === ROLES.MURID) {
         const self = await prisma.student.findUnique({ where: { userId: req.user.id } });
         if (!self) {
-          return response.error(res, null, "Data murid tidak ditemukan untuk pengguna ini");
+          return response.notFound(res, "Data murid tidak ditemukan untuk pengguna ini");
         }
         actualStudentId = self.id;
       }
 
       const student = await prisma.student.findUnique({ where: { id: actualStudentId } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       const existing = await prisma.enrollment.findUnique({
         where: { mataPelajaranId_studentId: { mataPelajaranId: id, studentId: actualStudentId } },
       });
       if (existing) {
-        return response.error(res, null, "Murid sudah terdaftar pada mata pelajaran ini");
+        return response.badRequest(res, "Murid sudah terdaftar pada mata pelajaran ini");
       }
 
       const enrollment = await prisma.enrollment.create({
@@ -268,24 +268,24 @@ export default {
       const { id } = req.params;
 
       if (req.user?.role !== ROLES.MURID) {
-        return response.error(res, null, "Hanya murid yang dapat mendaftarkan dirinya sendiri");
+        return response.unauthorized(res, "Hanya murid yang dapat mendaftarkan dirinya sendiri");
       }
 
       const mataPelajaran = await prisma.mataPelajaran.findUnique({ where: { id } });
       if (!mataPelajaran) {
-        return response.error(res, null, "Data mata pelajaran tidak ditemukan");
+        return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
       const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan untuk pengguna ini");
+        return response.notFound(res, "Data murid tidak ditemukan untuk pengguna ini");
       }
 
       const existing = await prisma.enrollment.findUnique({
         where: { mataPelajaranId_studentId: { mataPelajaranId: id, studentId: student.id } },
       });
       if (existing) {
-        return response.error(res, null, "Anda sudah terdaftar pada mata pelajaran ini");
+        return response.badRequest(res, "Anda sudah terdaftar pada mata pelajaran ini");
       }
 
       const enrollment = await prisma.enrollment.create({
@@ -313,7 +313,7 @@ export default {
         where: { mataPelajaranId: id, studentId },
       });
       if (count === 0) {
-        return response.error(res, null, "Murid tidak terdaftar pada mata pelajaran ini");
+        return response.notFound(res, "Murid tidak terdaftar pada mata pelajaran ini");
       }
 
       response.success(res, null, "Sukses menghapus murid dari mata pelajaran");
@@ -330,7 +330,7 @@ export default {
     try {
       const teacher = await teacherOf(req.user?.id);
       if (!teacher) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
 
       const take = Number(limit);

@@ -40,7 +40,7 @@ export default {
     try {
       const teacher = await prisma.teacher.findUnique({ where: { userId: req.user.id } });
       if (!teacher) {
-        return response.error(res, null, "Data guru tidak ditemukan");
+        return response.notFound(res, "Data guru tidak ditemukan");
       }
 
       const [mataPelajaranCount, materiCount, recentSubjects] = await Promise.all([

@@ -57,13 +57,13 @@ export default {
       const { id } = req.params;
       const student = await prisma.student.findUnique({ where: { id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.MURID) {
         const self = await prisma.student.findUnique({ where: { userId: req.user.id } });
         if (!self || self.id !== id) {
-          return response.error(res, null, "Anda tidak memiliki akses ke data ini");
+          return response.unauthorized(res, "Anda tidak memiliki akses ke data ini");
         }
       }
 
@@ -85,11 +85,11 @@ export default {
   async getMyEnrolledMataPelajaran(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.MURID) {
-        return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
+        return response.unauthorized(res, "Hanya murid yang dapat mengakses endpoint ini");
       }
       const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       const enrollments = await prisma.enrollment.findMany({
@@ -110,11 +110,11 @@ export default {
   async getMyAssignments(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.MURID) {
-        return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
+        return response.unauthorized(res, "Hanya murid yang dapat mengakses endpoint ini");
       }
       const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       const data = await studentAssignments(student.id, true);
@@ -129,13 +129,13 @@ export default {
       const { id } = req.params;
       const student = await prisma.student.findUnique({ where: { id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       if (req.user?.role === ROLES.MURID) {
         const self = await prisma.student.findUnique({ where: { userId: req.user.id } });
         if (!self || self.id !== id) {
-          return response.error(res, null, "Anda tidak memiliki akses ke data ini");
+          return response.unauthorized(res, "Anda tidak memiliki akses ke data ini");
         }
       }
 
@@ -149,11 +149,11 @@ export default {
   async getStudentProfile(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.MURID) {
-        return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
+        return response.unauthorized(res, "Hanya murid yang dapat mengakses endpoint ini");
       }
       const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
       response.success(res, student, "Sukses mengambil data profil murid");
     } catch (error) {
@@ -164,11 +164,11 @@ export default {
   async updateStudentProfile(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.MURID) {
-        return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
+        return response.unauthorized(res, "Hanya murid yang dapat mengakses endpoint ini");
       }
       const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       const { nis, kelas, noTelp } = req.body;
@@ -262,7 +262,7 @@ export default {
     try {
       const result = await prisma.student.findUnique({ where: { id: req.params.id } });
       if (!result) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
       response.success(res, result, "Sukses mengambil data murid");
     } catch (error) {
@@ -277,7 +277,7 @@ export default {
 
       const student = await prisma.student.findUnique({ where: { id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       const updated = await prisma.$transaction(async (tx) => {
@@ -299,7 +299,7 @@ export default {
     try {
       const student = await prisma.student.findUnique({ where: { id: req.params.id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       // Deleting the User cascades to the Student row.
@@ -314,31 +314,31 @@ export default {
   async markAssignmentCompletion(req: IReqUser, res: Response) {
     try {
       if (req.user?.role !== ROLES.MURID) {
-        return response.error(res, null, "Hanya murid yang dapat mengakses endpoint ini");
+        return response.unauthorized(res, "Hanya murid yang dapat mengakses endpoint ini");
       }
 
       const { id } = req.params;
       const { isCompleted } = req.body as { isCompleted?: boolean };
 
       if (isCompleted === undefined) {
-        return response.error(res, null, "Status penyelesaian (isCompleted) harus disertakan");
+        return response.badRequest(res, "Status penyelesaian (isCompleted) harus disertakan");
       }
 
       const student = await prisma.student.findUnique({ where: { userId: req.user.id } });
       if (!student) {
-        return response.error(res, null, "Data murid tidak ditemukan");
+        return response.notFound(res, "Data murid tidak ditemukan");
       }
 
       const assignment = await prisma.assignment.findUnique({ where: { id } });
       if (!assignment) {
-        return response.error(res, null, "Tugas tidak ditemukan");
+        return response.notFound(res, "Tugas tidak ditemukan");
       }
 
       const submission = await prisma.submission.findUnique({
         where: { assignmentId_studentId: { assignmentId: id, studentId: student.id } },
       });
       if (!submission) {
-        return response.error(res, null, "Anda belum mengumpulkan tugas ini");
+        return response.notFound(res, "Anda belum mengumpulkan tugas ini");
       }
 
       if (isCompleted) {

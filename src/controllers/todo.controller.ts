@@ -10,7 +10,7 @@ export default {
       await todoDAO.validate(req.body);
 
       if (!req.user?.id) {
-        return response.error(res, null, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
 
       const { title, description, dueDate, completed } = req.body;
@@ -37,7 +37,7 @@ export default {
 
     try {
       if (!req.user?.id) {
-        return response.error(res, null, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
 
       const take = Number(limit);
@@ -73,12 +73,12 @@ export default {
       const { id } = req.params;
 
       if (!req.user?.id) {
-        return response.error(res, null, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
 
       const todo = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
       if (!todo) {
-        return response.error(res, null, "Data todo tidak ditemukan");
+        return response.notFound(res, "Data todo tidak ditemukan");
       }
 
       response.success(res, todo, "Sukses mengambil data todo");
@@ -92,14 +92,14 @@ export default {
       const { id } = req.params;
 
       if (!req.user?.id) {
-        return response.error(res, null, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
 
       await todoDAO.validate(req.body);
 
       const existing = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
       if (!existing) {
-        return response.error(res, null, "Data todo tidak ditemukan");
+        return response.notFound(res, "Data todo tidak ditemukan");
       }
 
       const { title, description, dueDate, completed } = req.body;
@@ -124,12 +124,12 @@ export default {
       const { id } = req.params;
 
       if (!req.user?.id) {
-        return response.error(res, null, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
 
       const existing = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
       if (!existing) {
-        return response.error(res, null, "Data todo tidak ditemukan");
+        return response.notFound(res, "Data todo tidak ditemukan");
       }
 
       await prisma.todo.delete({ where: { id } });
@@ -144,12 +144,12 @@ export default {
       const { id } = req.params;
 
       if (!req.user?.id) {
-        return response.error(res, null, "User tidak terautentikasi");
+        return response.unauthenticated(res, "User tidak terautentikasi");
       }
 
       const todo = await prisma.todo.findFirst({ where: { id, userId: req.user.id } });
       if (!todo) {
-        return response.error(res, null, "Data todo tidak ditemukan");
+        return response.notFound(res, "Data todo tidak ditemukan");
       }
 
       const updatedTodo = await prisma.todo.update({
