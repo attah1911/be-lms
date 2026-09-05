@@ -197,6 +197,13 @@ export default {
         return response.notFound(res, "Data mata pelajaran tidak ditemukan");
       }
 
+      if (req.user?.role === ROLES.GURU) {
+        const teacher = await teacherOf(req.user.id);
+        if (!teacher || mataPelajaran.guruId !== teacher.id) {
+          return response.unauthorized(res, "Anda tidak memiliki akses ke mata pelajaran ini");
+        }
+      }
+
       const enrollments = await prisma.enrollment.findMany({
         where: { mataPelajaranId: id },
         include: {

@@ -25,8 +25,8 @@ router.post("/auth/login", authController.login);
 router.get("/auth/me", authMiddleware, authController.me);
 router.put("/auth/me", authMiddleware, authController.updateProfile);
 router.post("/auth/change-password", authMiddleware, authController.changePassword);
-router.post("/auth/submit-student-data", authController.submitStudentData);
-router.get("/auth/student-data", authController.getStudentData); 
+router.post("/auth/submit-student-data", authMiddleware, aclMiddleware([ROLES.MURID]), authController.submitStudentData);
+router.get("/auth/student-data", authMiddleware, aclMiddleware([ROLES.MURID]), authController.getStudentData);
 
 // Admin Routes
 router.post("/users", authMiddleware, aclMiddleware([ROLES.ADMIN]), usersController.create);
@@ -75,7 +75,7 @@ router.put("/mata-pelajaran/:id", authMiddleware, aclMiddleware([ROLES.ADMIN, RO
 router.delete("/mata-pelajaran/:id", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), mataPelajaranController.remove);
 
 // Student Enrollment Routes
-router.get("/mata-pelajaran/:id/students", authMiddleware, mataPelajaranController.getEnrolledStudents);
+router.get("/mata-pelajaran/:id/students", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.GURU]), mataPelajaranController.getEnrolledStudents);
 router.post("/mata-pelajaran/:id/enroll/:studentId", authMiddleware, aclMiddleware([ROLES.ADMIN, ROLES.MURID]), mataPelajaranController.enrollStudent);
 router.post("/mata-pelajaran/:id/self-enroll", authMiddleware, aclMiddleware([ROLES.MURID]), mataPelajaranController.selfEnrollStudent);
 router.delete("/mata-pelajaran/:id/unenroll/:studentId", authMiddleware, aclMiddleware([ROLES.ADMIN]), mataPelajaranController.unenrollStudent);

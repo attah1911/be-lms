@@ -89,14 +89,64 @@ const toDataURL = (file: Express.Multer.File) => {
 const getPublicIdFromFileUrl = (fileUrl: string) => {
   const pathParts = fileUrl.split('/');
   const fileName = pathParts[pathParts.length - 1];
-  
+
   const publicId = fileName.split('.')[0];
-  
+
   return publicId;
 };
 
+/** Resolve a Cloudinary fileUrl into its {publicId, resourceType} for API calls. */
+const resolveResource = (fileUrl: string) => {
+  const urlParts = fileUrl.split('/');
+
+  let folderIndex = -1;
+  for (let i = 0; i < urlParts.length; i++) {
+    if (urlParts[i] === 'documents' ||
+        urlParts[i] === 'images' ||
+        urlParts[i] === 'videos' ||
+        urlParts[i] === 'audio' ||
+        urlParts[i] === 'materials' ||
+        urlParts[i] === 'profile-pictures') {
+      folderIndex = i;
+      break;
+    }
+  }
+
+  let publicId: string;
+  if (folderIndex === -1) {
+    publicId = getPublicIdFromFileUrl(fileUrl);
+  } else {
+    const publicIdParts = urlParts.slice(folderIndex);
+    const lastPart = publicIdParts[publicIdParts.length - 1];
+    publicIdParts[publicIdParts.length - 1] = lastPart.split('.')[0];
+    publicId = publicIdParts.join('/');
+  }
+
+  let resourceType = 'image';
+  if (fileUrl.includes('/video/') || fileUrl.includes('/videos/')) {
+    resourceType = 'video';
+  } else if (fileUrl.includes('/raw/') ||
+            fileUrl.includes('/documents/') ||
+            fileUrl.includes('/materials/')) {
+    resourceType = 'raw';
+  }
+
+  return { publicId, resourceType };
+};
+
 export default {
-  async uploadSingle(file: Express.Multer.File) {
+  /** Who uploaded this file, per the `uploaded_by` context tag set at upload time. Null for files uploaded before this tagging existed, or on lookup failure. */
+  async getOwner(fileUrl: string): Promise<string | null> {
+    try {
+      const { publicId, resourceType } = resolveResource(fileUrl);
+      const resource = await cloudinary.api.resource(publicId, { resource_type: resourceType });
+      return resource?.context?.custom?.uploaded_by ?? resource?.context?.uploaded_by ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  async uploadSingle(file: Express.Multer.File, uploaderId: string) {
     try {
       if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
         throw new Error("Cloudinary configuration is incomplete");
@@ -113,7 +163,8 @@ export default {
             resource_type: resourceType,
             folder: folder,
             transformation: transformations,
-            public_id: `${Date.now()}_${file.originalname.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_")}`
+            public_id: `${Date.now()}_${file.originalname.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_")}`,
+            context: { uploaded_by: uploaderId }
           },
           (error, result) => {
             if (error) reject(error);
@@ -129,9 +180,9 @@ export default {
     }
   },
   
-  async uploadMultiple(files: Express.Multer.File[]) {
+  async uploadMultiple(files: Express.Multer.File[], uploaderId: string) {
     const uploadBatch = files.map((item) => {
-      const result = this.uploadSingle(item);
+      const result = this.uploadSingle(item, uploaderId);
       return result;
     });
     const results = await Promise.all(uploadBatch);
@@ -140,45 +191,12 @@ export default {
 
   async remove(fileUrl: string) {
     try {
-      const urlParts = fileUrl.split('/');
-      
-      let folderIndex = -1;
-      for (let i = 0; i < urlParts.length; i++) {
-        if (urlParts[i] === 'documents' || 
-            urlParts[i] === 'images' || 
-            urlParts[i] === 'videos' || 
-            urlParts[i] === 'audio' || 
-            urlParts[i] === 'materials' || 
-            urlParts[i] === 'profile-pictures') {
-          folderIndex = i;
-          break;
-        }
-      }
-      
-      if (folderIndex === -1) {
-        const publicId = getPublicIdFromFileUrl(fileUrl);
-        return await cloudinary.uploader.destroy(publicId);
-      }
-      
-      const publicIdParts = urlParts.slice(folderIndex);
-      const lastPart = publicIdParts[publicIdParts.length - 1];
-      publicIdParts[publicIdParts.length - 1] = lastPart.split('.')[0];
-      
-      const publicId = publicIdParts.join('/');
-      
-      let resourceType = 'image';
-      if (fileUrl.includes('/video/') || fileUrl.includes('/videos/')) {
-        resourceType = 'video';
-      } else if (fileUrl.includes('/raw/') || 
-                fileUrl.includes('/documents/') || 
-                fileUrl.includes('/materials/')) {
-        resourceType = 'raw';
-      }
-      
+      const { publicId, resourceType } = resolveResource(fileUrl);
+
       const result = await cloudinary.uploader.destroy(publicId, {
         resource_type: resourceType
       });
-      
+
       return result;
     } catch (error) {
       console.error("Error deleting file from Cloudinary:", error);

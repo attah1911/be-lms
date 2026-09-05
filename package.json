@@ -35,6 +35,9 @@
     "swagger-ui-express": "4.6.3",
     "yup": "^1.4.0"
   },
+  "overrides": {
+    "qs": "^6.16.0"
+  },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",
     "@types/cors": "2.8.17",

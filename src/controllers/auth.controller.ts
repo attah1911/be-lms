@@ -275,17 +275,17 @@ const authController = {
     }
   },
 
-  async submitStudentData(req: Request, res: Response) {
+  async submitStudentData(req: IReqUser, res: Response) {
     try {
-      const { nis, kelas, noTelp, email } = req.body;
+      const { nis, kelas, noTelp } = req.body;
 
       const user = await prisma.user.findFirst({
-        where: { email, role: "murid", isActive: true },
+        where: { id: req.user!.id, role: "murid", isActive: true },
       });
       if (!user) {
         return response.badRequest(
           res,
-          "Email tidak valid atau bukan email murid yang aktif"
+          "Akun tidak valid atau bukan murid yang aktif"
         );
       }
 
@@ -316,21 +316,15 @@ const authController = {
     }
   },
 
-  async getStudentData(req: Request, res: Response) {
+  async getStudentData(req: IReqUser, res: Response) {
     try {
-      const { email } = req.query;
-
-      if (!email || typeof email !== "string") {
-        return response.badRequest(res, "Email harus disertakan");
-      }
-
       const user = await prisma.user.findFirst({
-        where: { email, role: "murid", isActive: true },
+        where: { id: req.user!.id, role: "murid", isActive: true },
       });
       if (!user) {
         return response.badRequest(
           res,
-          "Email tidak valid atau bukan email murid yang aktif"
+          "Akun tidak valid atau bukan murid yang aktif"
         );
       }
 

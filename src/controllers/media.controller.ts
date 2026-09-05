@@ -1,7 +1,8 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import response from "../utils/response";
 import uploader from "../utils/uploader";
-import { CloudinaryResponse } from "../utils/interfaces";
+import { CloudinaryResponse, IReqUser } from "../utils/interfaces";
+import { ROLES } from "../utils/constant";
 
 const mediaController = {
   /**
@@ -21,7 +22,7 @@ const mediaController = {
    *         required: true
    *         description: File to upload
    */
-  async single(req: Request, res: Response) {
+  async single(req: IReqUser, res: Response) {
     /**
      #swagger.tags = ['Media']
      #swagger.security = [{
@@ -48,7 +49,7 @@ const mediaController = {
       }
 
       
-      const result = await uploader.uploadSingle(file) as CloudinaryResponse;
+      const result = await uploader.uploadSingle(file, req.user!.id) as CloudinaryResponse;
       
       const fileData = {
         url: result.secure_url,
@@ -97,7 +98,7 @@ const mediaController = {
    *         required: true
    *         description: Files to upload
    */
-  async multiple(req: Request, res: Response) {
+  async multiple(req: IReqUser, res: Response) {
     /**
      #swagger.tags = ['Media']
      #swagger.security = [{
@@ -120,7 +121,7 @@ const mediaController = {
         return response.badRequest(res, "Tidak ada file yang dipilih");
       }
       
-      const results = await uploader.uploadMultiple(files) as CloudinaryResponse[];
+      const results = await uploader.uploadMultiple(files, req.user!.id) as CloudinaryResponse[];
       
       const processedResults = results.map((result, index) => {
         return {
@@ -159,7 +160,7 @@ const mediaController = {
    *         required: true
    *         description: URL of file to delete
    */
-  async remove(req: Request, res: Response) {
+  async remove(req: IReqUser, res: Response) {
     /**
      #swagger.tags = ['Media']
      #swagger.security = [{
@@ -177,6 +178,13 @@ const mediaController = {
 
       if (!fileUrl || typeof fileUrl !== 'string') {
         return response.badRequest(res, "URL file tidak valid");
+      }
+
+      if (req.user?.role !== ROLES.ADMIN) {
+        const owner = await uploader.getOwner(fileUrl);
+        if (owner !== req.user?.id) {
+          return response.unauthorized(res, "Anda tidak memiliki akses untuk menghapus file ini");
+        }
       }
 
       const result = await uploader.remove(fileUrl);
